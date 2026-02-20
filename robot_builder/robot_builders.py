@@ -4,9 +4,9 @@ from pybullet_tools.bullet_utils import BASE_LINK, BASE_RESOLUTIONS, BASE_VELOCI
     draw_base_limits as draw_base_limits_bb, BASE_LIMITS, CAMERA_MATRIX
 from pybullet_tools.utils import LockRenderer, HideOutput, PI, unit_pose
 
-from robot_builder.robots import PR2Robot, FEGripper, SpotRobot
+from robot_builder.robots import PR2Robot, FEGripper, SpotRobot, FetchRobot
 from robot_builder.robot_utils import create_mobile_robot, BASE_GROUP, BASE_TORSO_GROUP
-
+from robot_builder.fetch_utils import load_fetch, FETCH_JOINT_GROUPS
 
 def get_robot_builder(builder_name):
     if builder_name == 'build_fridge_domain_robot':
@@ -78,6 +78,25 @@ def create_pr2_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
     return robot
 
 
+def create_fetch_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
+                       custom_limits=BASE_LIMITS, resolutions=BASE_RESOLUTIONS,
+                       draw_base_limits=False, max_velocities=BASE_VELOCITIES, robot=None, **kwargs):
+    return create_mobile_robot(
+        world,
+        load_fetch,
+        FetchRobot,
+        BASE_TORSO_GROUP,
+        FETCH_JOINT_GROUPS,
+        base_q=base_q,
+        custom_limits=custom_limits,
+        use_torso=use_torso,
+        draw_base_limits=draw_base_limits,
+        max_velocities=max_velocities,
+        robot=robot,
+        **kwargs,
+    )
+
+
 #######################################################
 
 from robot_builder.spot_utils import load_spot, SPOT_JOINT_GROUPS
@@ -131,7 +150,7 @@ def build_skill_domain_robot(world, robot_name, **kwargs):
     if 'custom_limits' not in kwargs:
         if robot_name == 'feg':
             kwargs['custom_limits'] = ((0, 0, 0), (2, 10, 2))
-        elif robot_name in ['spot', 'pr2']:
+        elif robot_name in ['spot', 'pr2', 'fetch', 'fetchrobot']:
             kwargs['custom_limits'] = ((0, 0, 0), (3, 10, 2.4))
     return build_robot_from_args(world, robot_name, **kwargs)
 
@@ -178,6 +197,10 @@ def build_oven_domain_robot(world, robot_name, **kwargs):
 
 def build_robot_from_args(world, robot_name, create_robot_fn=None, **kwargs):
     """ call upon different robot classes """
+    robot_name = robot_name.lower()
+    if robot_name == 'fetchrobot':
+        robot_name = 'fetch'
+
     spawn_range = None
     if 'spawn_range' in kwargs:
         spawn_range = kwargs['spawn_range']
@@ -217,6 +240,8 @@ def build_robot_from_args(world, robot_name, create_robot_fn=None, **kwargs):
             robot = create_spot_robot(world, **kwargs)
         elif robot_name == 'pr2':
             robot = create_pr2_robot(world, **kwargs)
+        elif robot_name == 'fetch':
+            robot = create_fetch_robot(world, **kwargs)
         else:
             print_red(f'Robot not found = {robot_name}, did you forget to provide create_robot_fn?')
             return None

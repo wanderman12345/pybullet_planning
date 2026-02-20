@@ -298,9 +298,14 @@ class RobotAPI(Robot):
 
     def check_if_pointing_upwards(self, gripper_grasp):
         ## set_color(gripper_grasp, RED, link=2)  ## important to find out
-        finger_aabb = get_aabb(gripper_grasp, link=self.cloned_finger_link)
-        aabb = nice(get_aabb(gripper_grasp), round_to=2)
-        return get_aabb_center(finger_aabb)[2] - get_aabb_center(aabb)[2] > 0.01
+        if self.cloned_finger_link not in get_all_links(gripper_grasp):
+            return False
+        try:
+            finger_aabb = get_aabb(gripper_grasp, link=self.cloned_finger_link)
+            aabb = nice(get_aabb(gripper_grasp), round_to=2)
+            return get_aabb_center(finger_aabb)[2] - get_aabb_center(aabb)[2] > 0.01
+        except Exception:
+            return False
 
     ################################################################################
 
@@ -765,6 +770,8 @@ class MobileRobot(RobotAPI):
 
 from robot_builder.spot_utils import SPOT_TOOL_LINK, SPOT_CARRY_ARM_CONF, SPOT_JOINT_GROUPS, \
     SPOT_GRIPPER_ROOT, solve_spot_leg_conf
+from robot_builder.fetch_utils import FETCH_TOOL_LINK, FETCH_GRIPPER_ROOT, FETCH_JOINT_GROUPS, \
+    FETCH_CARRY_ARM_CONF
 
 
 class SpotRobot(MobileRobot):
@@ -1177,6 +1184,50 @@ class PR2Robot(MobileRobot):
     # def inverse_kinematics(self, arm, gripper_pose, obstacles, attempts=10, verbose=True, visualize=False):
     #     from pybullet_tools.ikfast.pr2.ik import pr2_inverse_kinematics
     #     return pr2_inverse_kinematics(self.body, arm, gripper_pose, custom_limits=self.custom_limits)
+
+
+class FetchRobot(PR2Robot):
+
+    path = 'models/fetch_description/robots/fetch.urdf'
+    arms = ['hand']
+    joint_groups = FETCH_JOINT_GROUPS
+    joint_group_names = ['hand', BASE_TORSO_GROUP]
+
+    def get_all_arms(self):
+        return self.arms
+
+    def get_group_joints(self, group):
+        return get_robot_group_joints(self.body, group, self.joint_groups)
+
+    def get_arm_joints(self, arm):
+        return self.get_group_joints('arm')
+
+    def get_gripper_joints(self, arm='hand'):
+        return self.get_group_joints('gripper')
+
+    def open_arm(self, arm='hand'):
+        arm_joints = self.get_arm_joints(arm)
+        set_joint_positions(self.body, arm_joints, self.get_carry_conf(arm, None, None))
+        gripper_joints = self.get_gripper_joints(arm)
+        open_conf = [get_max_limit(self.body, joint) for joint in gripper_joints]
+        set_joint_positions(self.body, gripper_joints, open_conf)
+
+    def get_gripper_root(self, arm='hand'):
+        return FETCH_GRIPPER_ROOT
+
+    def get_tool_link(self, arm='hand'):
+        return FETCH_TOOL_LINK
+
+    def _close_cloned_gripper(self, gripper_cloned, arm='hand'):
+        joints = get_cloned_gripper_joints(gripper_cloned)
+        set_joint_positions(gripper_cloned, joints, [0] * len(joints))
+
+    def _open_cloned_gripper(self, gripper_cloned, arm='hand', width=0.04):
+        joints = get_cloned_gripper_joints(gripper_cloned)
+        set_joint_positions(gripper_cloned, joints, [width] * len(joints))
+
+    def get_carry_conf(self, arm, grasp_type, g):
+        return FETCH_CARRY_ARM_CONF
 
 ## -------------------------------------------------------------------------
 
