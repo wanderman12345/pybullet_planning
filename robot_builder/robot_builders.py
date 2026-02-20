@@ -6,6 +6,14 @@ from pybullet_tools.utils import LockRenderer, HideOutput, PI, unit_pose
 
 from robot_builder.robots import PR2Robot, FEGripper, SpotRobot, FetchRobot
 from robot_builder.robot_utils import create_mobile_robot, BASE_GROUP, BASE_TORSO_GROUP
+from pybullet_tools.bullet_utils import load_robot_urdf
+
+try:
+    from robot_builder.fetch_utils import load_fetch
+except ImportError:
+    def load_fetch():
+        return load_robot_urdf(FetchRobot.path)
+
 from robot_builder.fetch_utils import load_fetch, FETCH_JOINT_GROUPS
 
 def get_robot_builder(builder_name):
