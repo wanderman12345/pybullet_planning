@@ -1,3 +1,5 @@
 [submodule "motion"]
 	path = motion
-	url = https://github.com/caelan/motion-planners
+	url = git@github.com:wanderman12345/motion-planners.git
+[submodule "examples/pybullet/utils"]
+	url = git@github.com:wanderman12345/pybullet_planning.git
