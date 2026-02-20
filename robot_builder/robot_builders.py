@@ -83,8 +83,7 @@ def create_fetch_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
                        draw_base_limits=False, max_velocities=BASE_VELOCITIES, robot=None, **kwargs):
 
     if robot is None:
-        robot = create_pr2()
-        set_pr2_ready(robot, arm=FetchRobot.arms[0], dual_arm=dual_arm)
+        robot = load_fetch()
         if len(base_q) == 3:
             set_group_conf(robot, 'base', base_q)
         elif len(base_q) == 4:
@@ -103,6 +102,7 @@ def create_fetch_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
                        dual_arm=dual_arm, use_torso=use_torso,
                        custom_limits=get_base_custom_limits(robot, custom_limits),
                        resolutions=resolutions, weights=weights, **kwargs)
+    robot.open_arm(FetchRobot.arms[0])
     world.add_robot(robot, max_velocities=max_velocities)
     robot.add_cameras(max_depth=2.5, camera_matrix=CAMERA_MATRIX, verbose=True)
     return robot
