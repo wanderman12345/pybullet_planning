@@ -4,7 +4,7 @@ from pybullet_tools.bullet_utils import BASE_LINK, BASE_RESOLUTIONS, BASE_VELOCI
     draw_base_limits as draw_base_limits_bb, BASE_LIMITS, CAMERA_MATRIX
 from pybullet_tools.utils import LockRenderer, HideOutput, PI, unit_pose
 
-from robot_builder.robots import PR2Robot, FEGripper, SpotRobot
+from robot_builder.robots import PR2Robot, FEGripper, SpotRobot, FetchRobot
 from robot_builder.robot_utils import create_mobile_robot, BASE_GROUP, BASE_TORSO_GROUP
 
 
@@ -75,6 +75,36 @@ def create_pr2_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
     ## don't show depth and segmentation data yet
     # if args.camera: robot.cameras[-1].get_image(segment=args.segment)
 
+    return robot
+
+
+def create_fetch_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
+                       custom_limits=BASE_LIMITS, resolutions=BASE_RESOLUTIONS,
+                       draw_base_limits=False, max_velocities=BASE_VELOCITIES, robot=None, **kwargs):
+
+    if robot is None:
+        robot = create_pr2()
+        set_pr2_ready(robot, arm=FetchRobot.arms[0], dual_arm=dual_arm)
+        if len(base_q) == 3:
+            set_group_conf(robot, 'base', base_q)
+        elif len(base_q) == 4:
+            set_group_conf(robot, 'base-torso', base_q)
+
+    with np.errstate(divide='ignore'):
+        weights = np.reciprocal(resolutions)
+
+    if isinstance(custom_limits, dict):
+        custom_limits = np.asarray(list(custom_limits.values())).T.tolist()
+
+    if draw_base_limits:
+        draw_base_limits_bb(custom_limits)
+
+    robot = FetchRobot(robot, base_link=BASE_LINK,
+                       dual_arm=dual_arm, use_torso=use_torso,
+                       custom_limits=get_base_custom_limits(robot, custom_limits),
+                       resolutions=resolutions, weights=weights, **kwargs)
+    world.add_robot(robot, max_velocities=max_velocities)
+    robot.add_cameras(max_depth=2.5, camera_matrix=CAMERA_MATRIX, verbose=True)
     return robot
 
 
@@ -217,6 +247,8 @@ def build_robot_from_args(world, robot_name, create_robot_fn=None, **kwargs):
             robot = create_spot_robot(world, **kwargs)
         elif robot_name == 'pr2':
             robot = create_pr2_robot(world, **kwargs)
+        elif robot_name == 'fetch':
+            robot = create_fetch_robot(world, **kwargs)
         else:
             print_red(f'Robot not found = {robot_name}, did you forget to provide create_robot_fn?')
             return None
