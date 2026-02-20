@@ -6,6 +6,13 @@ from pybullet_tools.utils import LockRenderer, HideOutput, PI, unit_pose
 
 from robot_builder.robots import PR2Robot, FEGripper, SpotRobot, FetchRobot
 from robot_builder.robot_utils import create_mobile_robot, BASE_GROUP, BASE_TORSO_GROUP
+from pybullet_tools.bullet_utils import load_robot_urdf
+
+try:
+    from robot_builder.fetch_utils import load_fetch
+except ImportError:
+    def load_fetch():
+        return load_robot_urdf(FetchRobot.path)
 
 
 def get_robot_builder(builder_name):
@@ -83,7 +90,7 @@ def create_fetch_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
                        draw_base_limits=False, max_velocities=BASE_VELOCITIES, robot=None, **kwargs):
 
     if robot is None:
-        robot = create_pr2()
+        robot = load_fetch()
         set_pr2_ready(robot, arm=FetchRobot.arms[0], dual_arm=dual_arm)
         if len(base_q) == 3:
             set_group_conf(robot, 'base', base_q)
