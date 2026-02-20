@@ -14,6 +14,7 @@ except ImportError:
     def load_fetch():
         return load_robot_urdf(FetchRobot.path)
 
+from robot_builder.fetch_utils import load_fetch, FETCH_JOINT_GROUPS
 
 def get_robot_builder(builder_name):
     if builder_name == 'build_fridge_domain_robot':
@@ -168,7 +169,7 @@ def build_skill_domain_robot(world, robot_name, **kwargs):
     if 'custom_limits' not in kwargs:
         if robot_name == 'feg':
             kwargs['custom_limits'] = ((0, 0, 0), (2, 10, 2))
-        elif robot_name in ['spot', 'pr2']:
+        elif robot_name in ['spot', 'pr2', 'fetch', 'fetchrobot']:
             kwargs['custom_limits'] = ((0, 0, 0), (3, 10, 2.4))
     return build_robot_from_args(world, robot_name, **kwargs)
 
@@ -215,6 +216,10 @@ def build_oven_domain_robot(world, robot_name, **kwargs):
 
 def build_robot_from_args(world, robot_name, create_robot_fn=None, **kwargs):
     """ call upon different robot classes """
+    robot_name = robot_name.lower()
+    if robot_name == 'fetchrobot':
+        robot_name = 'fetch'
+
     spawn_range = None
     if 'spawn_range' in kwargs:
         spawn_range = kwargs['spawn_range']
