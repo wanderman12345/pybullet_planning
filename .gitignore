@@ -3,6 +3,7 @@
 **/*.bazel
 temp
 **/*.so
+**/txt_file.txt
 
 # windows extension build
 *.pyd
@@ -12,3 +13,20 @@ temp
 **/*.swp
 **/*.~un
 build/
+
+pybullet_tools/vhacd_utils.py
+
+*/visualizations/
+*/temp/
+*/statistics/
+*/txt_file.txt
+*/tests/temp_urdfs/
+*/pb_images/
+*.ipynb_checkpoints/
+*.png
+
+mamao_tools/*.pdf
+mamao_tools/*.json
+
+databases/*.pickle
+

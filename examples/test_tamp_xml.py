@@ -46,7 +46,7 @@ def parse_object(obj, mesh_directory):
     mesh_filename = obj.find('geom').text
     geom = get_mesh_geometry(os.path.join(mesh_directory, mesh_filename))
     pose = parse_pose(obj.find('pose'))
-    movable = parse_boolean(obj.find('moveable'))
+    movable = parse_boolean(obj.find('movable'))
 
     color = (.75, .75, .75, 1)
     if 'red' in name:
@@ -110,7 +110,7 @@ def main():
     #problem = 'problem4' # Nonmono
 
     root_directory = os.path.dirname(os.path.abspath(__file__))
-    directory = os.path.join(root_directory, '..', 'problems', benchmark, problem)
+    directory = os.path.join(root_directory, '..', 'problem_sets', benchmark, problem)
     [mesh_directory] = list(filter(os.path.isdir, (os.path.join(directory, o)
                                                  for o in os.listdir(directory) if o.endswith('meshes'))))
     [xml_path] = [os.path.join(directory, o) for o in os.listdir(directory) if o.endswith('xml')]

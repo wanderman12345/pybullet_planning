@@ -10,21 +10,26 @@ import numpy as np
 
 from .ikfast.pr2.ik import is_ik_compiled, pr2_inverse_kinematics
 from .ikfast.utils import USE_CURRENT, USE_ALL
-from .pr2_problems import get_fixed_bodies
-from .pr2_utils import TOP_HOLDING_LEFT_ARM, SIDE_HOLDING_LEFT_ARM, GET_GRASPS, get_gripper_joints, \
+from pybullet_tools.pr2_problems import get_fixed_bodies
+from pybullet_tools.pr2_utils import GET_GRASPS, get_gripper_joints, \
     get_carry_conf, get_top_grasps, get_side_grasps, open_arm, arm_conf, get_gripper_link, get_arm_joints, \
     learned_pose_generator, PR2_TOOL_FRAMES, get_x_presses, PR2_GROUPS, joints_from_names, \
     is_drake_pr2, get_group_joints, get_group_conf, compute_grasp_width, PR2_GRIPPER_ROOTS
-from .utils import invert, multiply, get_name, set_pose, get_link_pose, is_placement, \
+from pybullet_tools.utils import invert, multiply, get_name, set_pose, get_link_pose, is_placement, \
     pairwise_collision, set_joint_positions, get_joint_positions, sample_placement, get_pose, waypoints_from_path, \
     unit_quat, plan_base_motion, plan_joint_motion, base_values_from_pose, pose_from_base_values, \
     uniform_pose_generator, sub_inverse_kinematics, add_fixed_constraint, remove_debug, remove_fixed_constraint, \
-    disable_real_time, enable_gravity, joint_controller_hold, get_distance, \
+    disable_real_time, enable_gravity, joint_controller_hold, get_distance, get_links, get_link_name, \
     get_min_limit, user_input, step_simulation, get_body_name, get_bodies, BASE_LINK, \
-    add_segments, get_max_limit, link_from_name, BodySaver, get_aabb, Attachment, interpolate_poses, \
-    plan_direct_joint_motion, has_gui, create_attachment, wait_for_duration, get_extend_fn, set_renderer, \
-    get_custom_limits, all_between, get_unit_vector, wait_if_gui, \
-    set_base_values, euler_from_quat, INF, elapsed_time, get_moving_links, flatten_links, get_relative_pose
+    add_segments, get_max_limit, link_from_name, BodySaver, get_aabb, interpolate_poses, \
+    plan_direct_joint_motion, has_gui, wait_for_duration, get_extend_fn, set_renderer, \
+    get_custom_limits, all_between, get_unit_vector, wait_if_gui, joint_from_name, create_box, set_point, \
+    set_base_values, euler_from_quat, INF, elapsed_time, get_moving_links, flatten_links, get_relative_pose, \
+    wait_unlocked, child_link_from_joint, get_rigid_clusters, link_pairs_collision
+
+from pybullet_tools.bullet_utils import nice
+from pybullet_tools.camera_utils import set_camera_target_robot, set_camera_target_body
+
 
 BASE_EXTENT = 3.5 # 2.5
 BASE_LIMITS = (-BASE_EXTENT*np.ones(2), BASE_EXTENT*np.ones(2))
@@ -46,17 +51,17 @@ def get_base_limits(robot):
 
 class Pose(object):
     num = count()
-    #def __init__(self, position, orientation):
-    #    self.position = position
-    #    self.orientation = orientation
-    def __init__(self, body, value=None, support=None, init=False):
+    def __init__(self, body, value=None, support=None, init=False, index=None):
         self.body = body
         if value is None:
             value = get_pose(self.body)
         self.value = tuple(value)
         self.support = support
         self.init = init
-        self.index = next(self.num)
+        if index is None:
+            index = next(self.num)
+        self.index = index
+        self.confs = tuple([])
     @property
     def bodies(self):
         return flatten_links(self.body)
@@ -70,38 +75,58 @@ class Pose(object):
     def __repr__(self):
         index = self.index
         #index = id(self) % 1000
-        return 'p{}'.format(index)
+        return 'p{}={}'.format(index, nice(self.value))
+        # return 'p{}'.format(index)
 
 class Grasp(object):
-    def __init__(self, grasp_type, body, value, approach, carry):
+    def __init__(self, grasp_type, body, value, approach, carry, index=None):
+        """ don't use grasp.carry because it should be arm independent """
         self.grasp_type = grasp_type
         self.body = body
         self.value = tuple(value) # gripper_from_object
         self.approach = tuple(approach)
         self.carry = tuple(carry)
-    def get_attachment(self, robot, arm):
-        tool_link = link_from_name(robot, PR2_TOOL_FRAMES[arm])
-        return Attachment(robot, tool_link, self.value, self.body)
+        if index == None:
+            index = id(self)
+        self.index = index
+
+    def get_attachment(self, robot, arm, **kwargs):
+        return robot.make_attachment(self, arm, **kwargs)
+
     def __repr__(self):
-        return 'g{}'.format(id(self) % 1000)
+        return 'g{}={}'.format(self.index % 1000, nice(self.value))
+        # return 'g{}'.format(id(self) % 1000)
+
 
 class Conf(object):
-    def __init__(self, body, joints, values=None, init=False):
-        self.body = body
+    def __init__(self, body, joints, values=None, init=False, index=None, joint_state=None):
+        self.body = body if isinstance(body, int) else body.body
         self.joints = joints
         if values is None:
             values = get_joint_positions(self.body, self.joints)
         self.values = tuple(values)
         self.init = init
+        if index is None:
+            index = id(self)
+        self.index = index
+        self.joint_state = joint_state
+        self.x_base_to_object = None
     @property
     def bodies(self): # TODO: misnomer
         return flatten_links(self.body, get_moving_links(self.body, self.joints))
     def assign(self):
         set_joint_positions(self.body, self.joints, self.values)
+        if self.joint_state is not None:
+            joints = self.joint_state.keys()
+            values = self.joint_state.values()
+            set_joint_positions(self.body, joints, values)
     def iterate(self):
         yield self
     def __repr__(self):
-        return 'q{}'.format(id(self) % 1000)
+        if len(self.joints) == 7:
+            return 'aq{}={}'.format(self.index % 1000, nice(self.values))
+        return 'q{}={}'.format(self.index % 1000, nice(self.values))
+        # return 'q{}'.format(id(self) % 1000)
 
 #####################################
 
@@ -113,11 +138,14 @@ class Command(object):
     def iterate(self):
         raise NotImplementedError()
 
-class Commands(object):
-    def __init__(self, state, savers=[], commands=[]):
+class Commands(Command):
+    def __init__(self, state, savers=[], commands=[], index=None):
         self.state = state
         self.savers = tuple(savers)
         self.commands = tuple(commands)
+        if index == None:
+            index = id(self)
+        self.index = index
     def assign(self):
         for saver in self.savers:
             saver.restore()
@@ -126,8 +154,36 @@ class Commands(object):
         for command in self.commands:
             for result in command.apply(state, **kwargs):
                 yield result
+    def reverse(self):
+        return self.__class__(self.state, savers=self.savers, index=self.index,
+                              commands=[command.reverse() for command in reversed(self.commands)])
     def __repr__(self):
-        return 'c{}'.format(id(self) % 1000)
+        commands = self.commands
+        if len(commands) == 1:
+            commands = commands[0]  ## YANG: to prevent error in prolog inference
+        return 'c{}={}'.format(self.index % 1000, commands)
+        # return 'c{}'.format(id(self) % 1000)
+
+class Simultaneous(Command): # Parallel
+    def __init__(self, commands=[]):
+        self.commands = tuple(commands)
+    def apply(self, state, **kwargs):
+        iterators = [command.apply(state, **kwargs) for command in self.commands]
+        while iterators:
+            remaining_iterators = []
+            outputs = []
+            for iterator in iterators:
+                try:
+                    outputs.append(next(iterator)) # TODO: return False for the rest
+                    remaining_iterators.append(iterator)
+                except StopIteration:
+                    pass
+            yield outputs
+            iterators = remaining_iterators
+    def reverse(self):
+        return self.__class__([command.reverse() for command in reversed(self.commands)])
+    def __repr__(self):
+        return '{{{}}}'.format(', '.join(map(repr, self.commands)))
 
 #####################################
 
@@ -185,7 +241,7 @@ class Trajectory(Command):
         if self.path:
             conf = self.path[0]
             d = 3 if isinstance(conf, Pose) else len(conf.joints)
-        return 't({},{})'.format(d, len(self.path))
+        return 't({}, {})'.format(d, len(self.path))
 
 def create_trajectory(robot, joints, path):
     return Trajectory(Conf(robot, joints, q) for q in path)
@@ -219,6 +275,7 @@ class GripperCommand(Command):
     def __repr__(self):
         return '{}({},{},{})'.format(self.__class__.__name__, get_body_name(self.robot),
                                      self.arm, self.position)
+
 class Attach(Command):
     vacuum = True
     def __init__(self, robot, arm, grasp, body):
@@ -233,8 +290,11 @@ class Attach(Command):
         body_pose = multiply(gripper_pose, self.grasp.value)
         set_pose(self.body, body_pose)
     def apply(self, state, **kwargs):
+        from pybullet_tools.pose_utils import create_attachment
         state.attachments[self.body] = create_attachment(self.robot, self.link, self.body)
         state.grasps[self.body] = self.grasp
+        if self.body not in state.poses:
+            print('Warning: attaching body without pose')
         del state.poses[self.body]
         yield
     def control(self, dt=0, **kwargs):
@@ -308,37 +368,6 @@ class Cook(Command):
 
 ##################################################
 
-def get_grasp_gen(problem, collisions=False, randomize=True):
-    for grasp_type in problem.grasp_types:
-        if grasp_type not in GET_GRASPS:
-            raise ValueError('Unexpected grasp type:', grasp_type)
-    def fn(body):
-        # TODO: max_grasps
-        # TODO: return grasps one by one
-        grasps = []
-        arm = 'left'
-        #carry_conf = get_carry_conf(arm, 'top')
-        if 'top' in problem.grasp_types:
-            approach_vector = APPROACH_DISTANCE*get_unit_vector([1, 0, 0])
-            grasps.extend(Grasp('top', body, g, multiply((approach_vector, unit_quat()), g), TOP_HOLDING_LEFT_ARM)
-                          for g in get_top_grasps(body, grasp_length=GRASP_LENGTH))
-        if 'side' in problem.grasp_types:
-            approach_vector = APPROACH_DISTANCE*get_unit_vector([2, 0, -1])
-            grasps.extend(Grasp('side', body, g, multiply((approach_vector, unit_quat()), g), SIDE_HOLDING_LEFT_ARM)
-                          for g in get_side_grasps(body, grasp_length=GRASP_LENGTH))
-        filtered_grasps = []
-        for grasp in grasps:
-            grasp_width = compute_grasp_width(problem.robot, arm, body, grasp.value) if collisions else 0.0
-            if grasp_width is not None:
-                grasp.grasp_width = grasp_width
-                filtered_grasps.append(grasp)
-        if randomize:
-            random.shuffle(filtered_grasps)
-        return [(g,) for g in filtered_grasps]
-        #for g in filtered_grasps:
-        #    yield (g,)
-    return fn
-
 ##################################################
 
 def accelerate_gen_fn(gen_fn, max_attempts=1):
@@ -393,46 +422,76 @@ def iterate_approach_path(robot, arm, gripper, pose, grasp, body=None):
             set_pose(body, multiply(tool_pose, grasp.value))
         yield
 
-def get_ir_sampler(problem, custom_limits={}, max_attempts=25, collisions=True, learned=True):
-    robot = problem.robot
-    obstacles = problem.fixed if collisions else []
-    gripper = problem.get_gripper()
-
-    def gen_fn(arm, obj, pose, grasp):
-        pose.assign()
-        approach_obstacles = {obst for obst in obstacles if not is_placement(obj, obst)}
-        for _ in iterate_approach_path(robot, arm, gripper, pose, grasp, body=obj):
-            if any(pairwise_collision(gripper, b) or pairwise_collision(obj, b) for b in approach_obstacles):
-                return
-        gripper_pose = multiply(pose.value, invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
-        default_conf = arm_conf(arm, grasp.carry)
-        arm_joints = get_arm_joints(robot, arm)
-        base_joints = get_group_joints(robot, 'base')
-        if learned:
-            base_generator = learned_pose_generator(robot, gripper_pose, arm=arm, grasp_type=grasp.grasp_type)
-        else:
-            base_generator = uniform_pose_generator(robot, gripper_pose)
-        lower_limits, upper_limits = get_custom_limits(robot, base_joints, custom_limits)
-        while True:
-            count = 0
-            for base_conf in islice(base_generator, max_attempts):
-                count += 1
-                if not all_between(lower_limits, base_conf, upper_limits):
-                    continue
-                bq = Conf(robot, base_joints, base_conf)
-                pose.assign()
-                bq.assign()
-                set_joint_positions(robot, arm_joints, default_conf)
-                if any(pairwise_collision(robot, b) for b in obstacles + [obj]):
-                    continue
-                #print('IR attempts:', count)
-                yield (bq,)
-                break
-            else:
-                yield None
-    return gen_fn
+# def get_ir_sampler(problem, custom_limits={}, max_attempts=25, collisions=True, learned=True, verbose=False):
+#     robot = problem.robot
+#     obstacles = problem.fixed if collisions else []
+#     gripper = problem.get_gripper()
+#
+#     def gen_fn(arm, obj, pose, grasp):
+#         pose.assign()
+#         link = None
+#         if isinstance(obj, tuple):  ## YANG: (body, link)
+#             obj, link = obj
+#         approach_obstacles = {obst for obst in obstacles if not is_placement(obj, obst)}
+#                               # and not is_containment(obj, obst, link)}
+#         iter = 0
+#         for _ in iterate_approach_path(robot, arm, gripper, pose, grasp, body=obj):
+#             if verbose:
+#                 for b in approach_obstacles:
+#                     if pairwise_collision(gripper, b):
+#                         print(f'       get_ir_sampler  |  iterate_approach_path {iter}  |  collision between {gripper} and {b}')
+#                         for l in get_links(b):
+#                             if pairwise_collision((gripper, None), (b, [l])):
+#                                 print('                colliding with', (b, l), get_link_name(b, l), get_aabb(b, l))
+#                         return
+#                     elif pairwise_collision(obj, b):
+#                         print(f'       get_ir_sampler  |  iterate_approach_path {iter} |  collision between {obj} and {b}')
+#                         return
+#             else:
+#                 if any(pairwise_collision(gripper, b) or pairwise_collision(obj, b) for b in approach_obstacles):
+#                     return
+#             iter += 1
+#         gripper_pose = multiply(pose.value, invert(grasp.value)) # w_f_g = w_f_o * (g_f_o)^-1
+#         default_conf = arm_conf(arm, grasp.carry)
+#         arm_joints = get_arm_joints(robot, arm)
+#         base_joints = get_group_joints(robot, 'base')
+#         # if pose_to_xyzyaw(pose.value) == (1.093, 7.088, 0.696, 2.8):
+#         #     yield (Conf(robot, base_joints, (1.241, 6.672, 1.874)),)
+#
+#         if learned:
+#             base_generator = learned_pose_generator(robot, gripper_pose, arm=arm, grasp_type=grasp.grasp_type)
+#         else:
+#             base_generator = uniform_pose_generator(robot, gripper_pose)
+#         lower_limits, upper_limits = get_custom_limits(robot, base_joints, custom_limits)
+#         while True:
+#             count = 0
+#             for base_conf in islice(base_generator, max_attempts):
+#                 count += 1
+#                 if not all_between(lower_limits, base_conf, upper_limits):
+#                     continue
+#                 bq = Conf(robot, base_joints, base_conf)
+#                 pose.assign()
+#                 bq.assign()
+#                 set_joint_positions(robot, arm_joints, default_conf)
+#                 if verbose:
+#                     for b in obstacles + [obj]:
+#                         if pairwise_collision(robot, b):
+#                             print(f'       get_ir_sampler  |  base_generator  |  collision between {robot} and {b}')
+#                             continue
+#                 else:
+#                     if any(pairwise_collision(robot, b) for b in obstacles + [obj]):
+#                         continue
+#                 if verbose: print('IR attempts:', count)
+#
+#                 # print('IR checked:', bq, obstacles + [obj], ' | ', arm_joints, default_conf)  ## YANG
+#                 yield (bq,)
+#                 break
+#             else:
+#                 yield None
+#     return gen_fn
 
 ##################################################
+
 
 def get_ik_fn(problem, custom_limits={}, collisions=True, teleport=False):
     robot = problem.robot
@@ -467,7 +526,7 @@ def get_ik_fn(problem, custom_limits={}, collisions=True, teleport=False):
         #approach_conf = pr2_inverse_kinematics(robot, arm, approach_pose, custom_limits=custom_limits,
         #                                       upper_limits=USE_CURRENT, nearby_conf=USE_CURRENT)
         approach_conf = sub_inverse_kinematics(robot, arm_joints[0], arm_link, approach_pose, custom_limits=custom_limits)
-        if (approach_conf is None) or any(pairwise_collision(robot, b) for b in obstacles + [obj]):
+        if (approach_conf is None) or any(pairwise_collision(robot, b) for b in obstacles):
             #print('Approach IK failure', approach_conf)
             #wait_if_gui()
             return None
@@ -500,12 +559,14 @@ def get_ik_fn(problem, custom_limits={}, collisions=True, teleport=False):
 
 ##################################################
 
-def get_ik_ir_gen(problem, max_attempts=25, learned=True, teleport=False, **kwargs):
+def get_ik_ir_gen(problem, max_attempts=25, learned=True, teleport=False, verbose=True, **kwargs):
     # TODO: compose using general fn
-    ir_sampler = get_ir_sampler(problem, learned=learned, max_attempts=1, **kwargs)
+    # ir_sampler = get_ir_sampler(problem, learned=learned, max_attempts=1, **kwargs)
+    ir_sampler = get_ir_sampler(problem, learned=learned, max_attempts=40, verbose=verbose, **kwargs)
     ik_fn = get_ik_fn(problem, teleport=teleport, **kwargs)
     def gen(*inputs):
-        b, a, p, g = inputs
+        #set_renderer(enable=verbose)
+        a, o, p, g = inputs
         ir_generator = ir_sampler(*inputs)
         attempts = 0
         while True:
@@ -515,16 +576,29 @@ def get_ik_ir_gen(problem, max_attempts=25, learned=True, teleport=False, **kwar
                 attempts = 0
                 yield None
             attempts += 1
+            if verbose: print(f'   {attempts} | get_ik_ir_gen | inputs = {inputs}')
+
             try:
                 ir_outputs = next(ir_generator)
             except StopIteration:
+                if verbose: print('    stopped ir_generator in', attempts, 'attempts')
                 return
+
             if ir_outputs is None:
                 continue
+            inp = ir_generator.gi_frame.f_locals
+            inp = [inp[k] for k in ['pose', 'grasp', 'custom_limits']]
+            if verbose:
+                print(f'           ir_generator  |  inputs = {inp}  |  ir_outputs = {ir_outputs}')
+                samp = create_box(.1, .1, .1, mass=1, color=(1, 0, 1, 1))
+                x,y,_ = ir_outputs[0].values
+                set_point(samp, (x,y,0.2))
+
             ik_outputs = ik_fn(*(inputs + ir_outputs))
             if ik_outputs is None:
                 continue
-            print('IK attempts:', attempts)
+            # print('                         ik_outputs = ik_fn(*(inputs + ir_outputs)) =', ik_outputs, ' | commands =', ik_outputs[0].commands)
+            if verbose: print('succeed after IK attempts:', attempts)
             yield ir_outputs + ik_outputs
             return
             #if not p.init:
@@ -541,12 +615,13 @@ def get_motion_gen(problem, custom_limits={}, collisions=True, teleport=False):
     def fn(bq1, bq2, fluents=[]):
         saver.restore()
         bq1.assign()
+        print('Discarded pr2_primitives.get_motion_gen\tobstacles:', obstacles)
         if teleport:
             path = [bq1, bq2]
         elif is_drake_pr2(robot):
             raw_path = plan_joint_motion(robot, bq2.joints, bq2.values, attachments=[],
                                          obstacles=obstacles, custom_limits=custom_limits, self_collisions=SELF_COLLISIONS,
-                                         restarts=4, max_iterations=50, smooth=50)
+                                         restarts=1, max_iterations=50, smooth=50)
             if raw_path is None:
                 print('Failed motion plan!')
                 #set_renderer(True)
@@ -642,6 +717,7 @@ def control_commands(commands, **kwargs):
         print(i, command)
         command.control(*kwargs)
 
+
 class State(object):
     def __init__(self, attachments={}, cleaned=set(), cooked=set()):
         self.poses = {body: Pose(body, get_pose(body))
@@ -650,13 +726,15 @@ class State(object):
         self.attachments = attachments
         self.cleaned = cleaned
         self.cooked = cooked
+
     def assign(self):
         for attachment in self.attachments.values():
-            #attach.attachment.assign()
+            # attach.attachment.assign()
             attachment.assign()
 
+
 def apply_commands(state, commands, time_step=None, pause=False, **kwargs):
-    #wait_if_gui('Apply?')
+    # wait_if_gui('Apply?')
     for i, command in enumerate(commands):
         print(i, command)
         for j, _ in enumerate(command.apply(state, **kwargs)):
@@ -695,3 +773,40 @@ def get_target_point(conf):
 def get_target_path(trajectory):
     # TODO: only do bounding boxes for moving links on the trajectory
     return [get_target_point(conf) for conf in trajectory.path]
+
+#######################################################
+
+
+BASE_CONSTANT = 1
+BASE_VELOCITY = 0.25
+
+
+def get_base_custom_limits(robot, base_limits, yaw_limit=None):
+    if isinstance(base_limits, dict):
+        return base_limits
+    if len(base_limits[0]) == 2:
+        x_limits, y_limits = zip(*base_limits)
+    if len(base_limits[0]) == 3:
+        x_limits, y_limits, z_limits = zip(*base_limits)
+
+    custom_limits = {
+        joint_from_name(robot, 'x'): x_limits,
+        joint_from_name(robot, 'y'): y_limits,
+    }
+    if yaw_limit is not None:
+        custom_limits.update({
+            joint_from_name(robot, 'theta'): yaw_limit,
+        })
+    if len(base_limits[0]) == 3:
+        custom_limits[joint_from_name(robot, 'torso_lift_joint')] = z_limits
+    return custom_limits
+
+
+def distance_fn(q1, q2):
+    distance = get_distance(q1.values[:2], q2.values[:2])
+    return BASE_CONSTANT + distance / BASE_VELOCITY
+
+
+def move_cost_fn(t):
+    distance = t.distance(distance_fn=lambda q1, q2: get_distance(q1[:2], q2[:2]))
+    return BASE_CONSTANT + distance / BASE_VELOCITY

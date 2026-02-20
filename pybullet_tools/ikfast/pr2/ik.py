@@ -1,3 +1,4 @@
+import os.path
 import random
 
 from ..utils import get_ik_limits, compute_forward_kinematics, compute_inverse_kinematics, select_solution, \
@@ -35,7 +36,7 @@ PR2_INFOS = {arm: IKFastInfo(module_name='pr2.ik{}'.format(arm.capitalize()), ba
                              ee_link=IK_FRAME[arm], free_joints=[TORSO_JOINT, UPPER_JOINT[arm]]) for arm in IK_FRAME}
 
 
-def get_if_info(arm):
+def get_ik_info(arm): # TODO: unused
     side = side_from_arm(arm)
     return PR2_INFOS[side]
 
@@ -65,6 +66,11 @@ def is_ik_compiled():
         return False
 
 def get_ik_generator(robot, arm, ik_pose, torso_limits=USE_ALL, upper_limits=USE_ALL, custom_limits={}):
+    if not is_ik_compiled():
+        from . import setup
+        script_path = os.path.abspath(setup.__file__)
+        raise RuntimeError('Please compile IKFast for the PR2: (cd {}; python {})'.format(
+            os.path.dirname(script_path), os.path.basename(script_path)))
     from .ikLeft import leftIK
     from .ikRight import rightIK
     arm_ik = {'left': leftIK, 'right': rightIK}
@@ -91,6 +97,7 @@ def get_tool_from_ik(robot, arm):
     world_from_ik = get_link_pose(robot, link_from_name(robot, IK_FRAME[arm]))
     return multiply(invert(world_from_tool), world_from_ik)
 
+
 def sample_tool_ik(robot, arm, tool_pose, nearby_conf=USE_ALL, max_attempts=25, **kwargs):
     ik_pose = multiply(tool_pose, get_tool_from_ik(robot, arm))
     generator = get_ik_generator(robot, arm, ik_pose, **kwargs)
@@ -104,6 +111,7 @@ def sample_tool_ik(robot, arm, tool_pose, nearby_conf=USE_ALL, max_attempts=25, 
         except StopIteration:
             break
     return None
+
 
 def pr2_inverse_kinematics(robot, arm, gripper_pose, obstacles=[], custom_limits={}, use_pybullet=False, **kwargs):
     arm_link = get_gripper_link(robot, arm)

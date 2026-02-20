@@ -1,157 +1,125 @@
-# pybullet-planning (previously ss-pybullet)
+# Long-Horizon Manipulation Planning Toolbox
 
-A repository of [PyBullet](https://pypi.python.org/pypi/pybullet) utility functions for robotic motion planning, manipulation planning, and task and motion planning (TAMP).
-This repository was originally developed for the [PDDLStream](https://github.com/caelan/pddlstream) (previously named [STRIPStream](https://github.com/caelan/stripstream)) approach to TAMP.
+This toolbox helps you solve long-horizon mobile manipulation problems using planning or policies. 
 
-<!--![Alt text](images/test.png?raw=true "Title")-->
-<!--img src="images/pr2.png" height="300">&emsp;<img src="images/kuka.png" height="300"-->
+It includes utility functions for
+* procedurally generating scenes from `.urdf`, `.sdf`, `.obj`, and other mesh files.
+  * output in `.lisdf` format that's an extension of `.sdf` format that supports including `.urdf` files and camera poses
+  * support loading scenes in pybullet or in web front
+* solving long-horizon problems using a task and motion planner `pddlstream`, including
+  * samplers used by the planner for mobile manipulation and NAMO domains 
+  * tools for speeding up planning based on
+    * plan feasibility prediction ([PIGINet](https://piginet.github.io/) project)
+    * vlm subgoal/action planning ([VLM-TAMP](https://zt-yang.github.io/vlm-tamp-robot) project)
+    * state-space reduction (e.g., heuristic object reduction; identify frequently collided objects during planning)
+    * action-space reduction (e.g., remove operators, axioms from pddl file; save databases of grasp, pose, configuration)
+    * HPN-based (hierarchical planning in the now) hierarchical planning
+  * scripts for generating images, animation, and videos from generated trajectories in pybullet and isaac gym 
 
-<!-- ## PyBullet Planning -->
-
-With the help of [Yijiang Huang](https://github.com/yijiangh), a stable and documented fork of **pybullet-planning** named [pybullet_planning](https://github.com/yijiangh/pybullet_planning) is available through [PyPI](https://pypi.org/project/pybullet-planning/).
-However, new features will continue to be introduced first through **pybullet-planning**.
-
-## Citation
-
-Caelan Reed Garrett. PyBullet Planning. https://pypi.org/project/pybullet-planning/. 2018.
+We recommend that you use the [kitchen-world](https://github.com/Learning-and-Intelligent-Systems/kitchen-worlds/tree/main) repo, which includes this toolbox, if
+* you are interested in procedural generation of kitchen scenes, because various assets and example layouts are provided there.
+* you are interested in generating trajectories using motion planning or task and motion planning.
 
 ## Installation
 
-Install for macOS or Linux using: 
+The following is included in the kitchen-world installation guide if you took that route.
 
-<!-- `pybullet-planning$ git clone --recursive git@github.com:caelan/pybullet-planning.git` -->
-```
-$ git clone --recurse-submodules https://github.com/caelan/pybullet-planning.git
-$ cd pybullet-planning
-pybullet-planning$ pip install -r requirements.txt
+1. Clone and grab the submodules, may take a while
+
+```shell
+git clone --recurse-submodules git@github.com:zt-yang/pybullet_planning.git
+cd pybullet_planning
 ```
 
-<!--
-Install PyBullet on OS X or Linux using: 
+2. Install dependencies
+
+```shell
+conda create -n pybullet python==3.8
+pip install -r requirements.txt
+conda activate pybullet
 ```
-$ pip install numpy pybullet
-$ git clone --recurse-submodules https://github.com/caelan/ss-pybullet.git
-$ cd ss-pybullet
-$ git pull --recurse-submodules
+
+3. Build IK solvers
+
+IKFast solver for PR2 arm planning (see [troubleshooting notes](pybullet_tools/ikfast/troubleshooting.md) if encountered error):
+
+```shell
+## sudo apt-get install python-dev
+(cd pybullet_tools/ikfast/pr2; python setup.py)
 ```
+
+If using Ubuntu, install TracIK for PR2 base, torso, and arm planning:
+
+```shell
+sudo apt-get install libeigen3-dev liborocos-kdl-dev libkdl-parser-dev liburdfdom-dev libnlopt-dev libnlopt-cxx-dev swig
+pip install git+https://github.com/mjd3/tracikpy.git
+```
+
+Attempting to install tracikpy on MacOS:
+
+```shell
+brew install eigen orocos-kdl nlopt urdfdom
+```
+
+### Issue: `C++`
+
+```shell
+ xcrun: error: invalid active developer path (/Library/Developer/CommandLineTools), missing xcrun at: /Library/Developer/CommandLineTools/usr/bin/xcrun
+```
+solution, takes a while to install
+```shell
+xcode-select --install
+```
+
+## Issue: Eigen path not found
+
+```shell
+/usr/local/include/kdl/jacobian.hpp:26:10: fatal error: 'Eigen/Core' file not found
+```
+
+---
+<!---
+## Overview
+
+Initially developed by Caelan for solving PDDLStream planning problems:
+* `pybullet_tools`: basic Util functions for interfacing with pybullet and stream functions
+* `databases`: saved grasps and other samples for faster debugging
+* `images`: for visualization
+
+Added by Yang for procedurally generating scenes and problems, solving partially-observable problems, and processing the data generated by planners for learning applications.
+* `cogarch_tools`: for agents and processes planning and interacting with the world continuously 
+
+---
+
+## Tutorials - Procedural Scene Generation
+
+The `/world_builder` directory includes functions for
+* Building a `World` object, adding entities such as `Robot`, `Movable`, `Joint`, `Surface`, `Space`. For example, as shown in scripts `tutorials/test_assets.py`
+
+```python
+world = 
+```
+* Movable and articulated objects are usually sampled from assets of object categories, then randomly located in collision-free poses given supporting regions
+* Procedurally generate scenes based on 
+  * an `.svg` file that roughly lay out furniture types, locations; movable types and supporting regions
+  * a function that 
+* Initiating a scene from an `.svg` file that roughly lay out object types and locations
+
+Run a flying panda gripper (feg) in kitchen simulation:
+```shell
+python tutorials/test_floating_gripper.py -t test_feg_pick
+python tutorials/test_data_generation.py -c kitchen_full_feg.yaml
+```
+
+---
+
 -->
 
-**pybullet-planning** is intended to have ongoing support for both python2.7 and python3.*
+## Trouble-Shooting 
 
-Make sure to recursively update **pybullet-planning**'s submodules when pulling new commits.
-```
-pybullet-planning$ git pull --recurse-submodules
-```
-<!-- `pybullet-planning$ git submodule update --init --recursive` -->
+See [trouble-shooting.md](trouble-shooting.md)
 
-## IKFast Compilation
+## Acknowledgements
 
-We recommend using [IKFast](http://openrave.org/docs/0.8.2/openravepy/ikfast/), an analytical inverse kinematics solver, instead of PyBullet's damped least squares solver.
-IKFast bindings are included for the following robots:
-* Franka Panda - `pybullet-planning$ (cd pybullet_tools/ikfast/franka_panda; python setup.py)`
-* MOVO - `pybullet-planning$ (cd pybullet_tools/ikfast/movo; python setup.py)`
-* PR2 - `pybullet-planning$ (cd pybullet_tools/ikfast/pr2; python setup.py)`
-<!-- `pybullet-planning$ ./setup_ikfast.sh` -->
-
-<!-- https://stackoverflow.com/questions/10382141/temporarily-change-current-working-directory-in-bash-to-run-a-command -->
-
-To create IKFast bindings for a new robot, following the instructions in [ikfast_pybind](https://github.com/yijiangh/ikfast_pybind). 
-
-<!-- https://pypi.org/project/ikfast-pybind/ -->
-
-## Tests
-
-1) Test PyBullet - ```pybullet-planning$ python -c 'import pybullet'```
-
-## Tutorial
-
-[test_turtlebot](https://github.com/caelan/pybullet-planning/blob/master/examples/test_turtlebot.py) - ```$ python -m examples.test_turtlebot```
-
-<img src="images/turtlebot.png" height="150">
-<!--img src="images/turtlebot2.png" height="150"-->
-
-Heavily annotated simple example that demonstrates:
-* Creating a PyBullet simulation
-* Waiting for user input (useful on macOS)
-* Programmatically creating objects
-* Getting/setting object base poses
-* Loading a robot [URDF](http://wiki.ros.org/urdf)
-* Getting/setting robot joint positions
-* Looking up named robot links and joints
-* Computing an object's current Axis-Aligned Bounding Box (AABB)
-* Drawing coordinate frames and bounding boxes
-* Checking collisions between two objects
-* Temporarily disabling rendering for efficiency purposes
-
-## Planning Examples
-
-* [Kuka IIWA pick motion planning](examples/test_kuka_pick.py) - `pybullet-planning$ python -m examples.test_kuka_pick`
-* [TutleBot base motion planning](examples/test_turtlebot_motion.py) - ```pybullet-planning$ python -m examples.test_turtlebot_motion```
-* [PR2 base & arm motion planning](examples/test_pr2_motion.py) - ```pybullet-planning$ python -m examples.test_pr2_motion```
-* [Franka Panda workspace planning](examples/test_franka.py) - ```pybullet-planning$ python -m examples.test_franka```
-* [Kinova MOVO workspace planning](examples/test_movo.py) - ```pybullet-planning$ python -m examples.test_movo```
-* [Cylinder SE(3) motion planning](examples/test_se3.py) - ```pybullet-planning$ python -m examples.test_se3```
-* [PR2 teleoperation](examples/teleop_pr2.py) - ```pybullet-planning$ python -m examples.teleop_pr2```
-
-<!--img src="images/movo.png" height="150"-->
-<img src="images/kuka_pick.png" height="150">&emsp;<img src="images/turtlebot_motion.png" height="150">
-&emsp;<img src="images/pr2_motion.png" height="150">
-
-<img src="images/franka.png" height="150">&emsp;<img src="images/movo2.png" height="150">
-&emsp;<img src="images/se3.png" height="150">
-
-## Debug Examples
-
-* [TAMP environments](examples/test_json.py) - ```pybullet-planning$ python -m examples.test_json```
-* [TAMP benchmarks](examples/test_tamp_xml.py) - ```pybullet-planning$ python -m examples.test_tamp_xml```
-* [Gripper side grasps](examples/gripper/test_side.py) - ```pybullet-planning$ python -m examples.gripper.test_side```
-* [Gripper top grasps](examples/gripper/test_top.py) - ```pybullet-planning$ python -m examples.gripper.test_top```
-* [Dropping particles](examples/test_water.py) - ```pybullet-planning$ python -m examples.test_water```
-* [PR2 cloning](examples/test_clone.py) - ```pybullet-planning$ python -m examples.test_clone```
-
-<img src="images/json.png" height="150">&emsp;<img src="images/tamp_xml.png" height="150">
-&emsp;<img src="images/water.png" height="150">
-<!--&emsp;<img src="images/test_side.png" height="150">
-&emsp;<img src="images/test_top.png" height="150"-->
-
-<!--
-* [OpenRAVE bodies](examples/test_kinbody.py) - ```pybullet-planning$ python -m examples.test_kinbody```
-* [Kiva shelves](examples/test_kiva.py) - ```pybullet-planning$ python -m examples.test_kiva```
-* [LIS/YCB models](examples/test_models.py) - ```pybullet-planning$ python -m examples.test_models```
-* [PR2 visibility](examples/test_visibility.py) - ```pybullet-planning$ python -m examples.test_visibility```
-* [TurtleBot collisions](examples/test_turtlebot.py) - ```pybullet-planning$ python -m examples.test_turtlebot```
--->
-
-## PDDLStream Examples
-
-See the following examples: https://github.com/caelan/pddlstream/tree/master/examples/pybullet
-
-[<img src="https://img.youtube.com/vi/3HJrkgIGK7c/0.jpg" height="200">](https://www.youtube.com/watch?v=3HJrkgIGK7c)
-[<img src="https://img.youtube.com/vi/oWr6m12nXcM/0.jpg" height="200">](https://www.youtube.com/watch?v=oWr6m12nXcM)
-
-## Forks
-
-* https://github.com/yijiangh/pybullet_planning
-* https://github.com/rachelholladay/pb_robot
-* https://github.com/mike-n-7/pb_robot
-* https://github.com/carismoses/pb_robot
-
-## Gallery
-
-* PDDLStream for TAMP - https://github.com/caelan/pddlstream
-* Online TAMP under Partial Observability - https://github.com/caelan/SS-Replan
-* Automated Construction - https://github.com/caelan/pb-construction
-* Learning + TAMP (LTAMP) - https://github.com/caelan/LTAMP
-
-## PyBullet Resources
-
-* PyPI - https://pypi.python.org/pypi/pybullet
-* Quickstart - https://docs.google.com/document/d/10sXEhzFRSnvFcl3XxNGhnD4N2SedqwdAvK3dsihxVUA/
-* Forum - https://pybullet.org/Bullet/phpBB3/
-* Wordpress - https://pybullet.org/wordpress/
-* Examples - https://github.com/bulletphysics/bullet3/tree/master/examples/pybullet/examples
-* Bindings - https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/pybullet.c
-
-## Bullet Resources
-
-* GitHub - https://github.com/bulletphysics/bullet3
+* Developed based on Caelan Garrett's [pybullet_planning](https://github.com/caelan/pybullet-planning) utility functions for robotic motion planning, manipulation planning, and task and motion planning (TAMP).
+* The development is partially performed during internship at NVIDIA Research, Seattle Robotics Lab.
