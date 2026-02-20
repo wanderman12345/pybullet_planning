@@ -81,20 +81,31 @@ def create_pr2_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
 def create_fetch_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
                        custom_limits=BASE_LIMITS, resolutions=BASE_RESOLUTIONS,
                        draw_base_limits=False, max_velocities=BASE_VELOCITIES, robot=None, **kwargs):
-    return create_mobile_robot(
-        world,
-        load_fetch,
-        FetchRobot,
-        BASE_TORSO_GROUP,
-        FETCH_JOINT_GROUPS,
-        base_q=base_q,
-        custom_limits=custom_limits,
-        use_torso=use_torso,
-        draw_base_limits=draw_base_limits,
-        max_velocities=max_velocities,
-        robot=robot,
-        **kwargs,
-    )
+
+    if robot is None:
+        robot = create_pr2()
+        set_pr2_ready(robot, arm=FetchRobot.arms[0], dual_arm=dual_arm)
+        if len(base_q) == 3:
+            set_group_conf(robot, 'base', base_q)
+        elif len(base_q) == 4:
+            set_group_conf(robot, 'base-torso', base_q)
+
+    with np.errstate(divide='ignore'):
+        weights = np.reciprocal(resolutions)
+
+    if isinstance(custom_limits, dict):
+        custom_limits = np.asarray(list(custom_limits.values())).T.tolist()
+
+    if draw_base_limits:
+        draw_base_limits_bb(custom_limits)
+
+    robot = FetchRobot(robot, base_link=BASE_LINK,
+                       dual_arm=dual_arm, use_torso=use_torso,
+                       custom_limits=get_base_custom_limits(robot, custom_limits),
+                       resolutions=resolutions, weights=weights, **kwargs)
+    world.add_robot(robot, max_velocities=max_velocities)
+    robot.add_cameras(max_depth=2.5, camera_matrix=CAMERA_MATRIX, verbose=True)
+    return robot
 
 
 #######################################################
