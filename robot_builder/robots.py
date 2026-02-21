@@ -610,8 +610,6 @@ class MobileRobot(RobotAPI):
     def get_stream_map(self, problem, collisions, custom_limits, teleport, domain_pddl=None, **kwargs):
         from pybullet_tools.stream_agent import get_stream_map
         stream_map = get_stream_map(problem, collisions, custom_limits, teleport, **kwargs)
-        if self.move_base:
-            stream_map.pop('test-inverse-reachability')
         return stream_map
 
     def add_operator_names_to_remove(self, names):
@@ -984,7 +982,7 @@ class PR2Robot(MobileRobot):
         # context_saver = WorldSaver(bodies=[state.world.robot])
         arm = self.arms[0]
         q = self.get_base_conf()
-        aq = self.get_arm_conf('left')
+        aq = self.get_arm_conf(arm)
         p = Pose(body, get_pose(body))
         movable_poses = [(f[1], f[2]) for f in fluents if f[0] == 'AtPose']
         if debug:

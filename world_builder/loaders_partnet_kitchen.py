@@ -543,8 +543,11 @@ def load_kitchen_mini_scene(world, **kwargs):
 #################################################################
 
 
-def load_counter_movables(world, counters, d_x_min=None, obstacles=[],
+def load_counter_movables(world, counters, d_x_min=None, obstacles=None,
                           verbose=False, reachability_check=True):
+    if obstacles is None:
+        obstacles = []
+
     categories = ['food', 'bottle', 'medicine']
     start = time.time()
     robot = world.robot
@@ -618,13 +621,18 @@ def load_counter_movables(world, counters, d_x_min=None, obstacles=[],
             adjust_for_reachability(obj, counter, d_x_min)
         return obj
 
+    use_reachability_filter = reachability_check and any(a in ['left', 'right'] for a in robot.arms)
+
     def ensure_cfree(obj, obstacles, obj_name, category=None, trials=10, **kwargs):
         def check_conditions(o):
             collision = collided(o, obstacles, verbose=verbose, world=world)
             unreachable = False
-            if not collision and reachability_check:
-                unreachable = not isinstance(o.supporting_surface, Space) and \
-                              not robot.check_reachability(o, state, verbose=verbose, debug=debug)
+            if not collision and use_reachability_filter:
+                try:
+                    unreachable = not isinstance(o.supporting_surface, Space) and \
+                                  not robot.check_reachability(o, state, verbose=verbose, debug=debug)
+                except Exception:
+                    unreachable = False
             size = unreachable or ((obj_name == 'food' and size_matter and len(satisfied) == 0))
             if collision or unreachable or size:
                 if verbose:
@@ -645,9 +653,8 @@ def load_counter_movables(world, counters, d_x_min=None, obstacles=[],
 
             trials -= 1
             if trials == 0:
-                print('cant ensure_cfree')
-                sys.exit()
-                # return None
+                print(f'cant ensure_cfree for {obj_name}; proceeding with last sampled pose')
+                return obj
             again = check_conditions(obj)
         return obj
 
@@ -1515,7 +1522,7 @@ def make_sure_obstacles(world, case, movables, counters, objects, food=None):
 
         if time.time() - start > time_allowed:
             print('cant make_sure_obstacles')
-            sys.exit()
+            break
 
     """ make sure obstacles can be moved away """
     for o in obstacles:

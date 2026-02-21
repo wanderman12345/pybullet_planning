@@ -14,8 +14,6 @@ except ImportError:
     def load_fetch():
         return load_robot_urdf(FetchRobot.path)
 
-from robot_builder.fetch_utils import load_fetch, FETCH_JOINT_GROUPS
-
 def get_robot_builder(builder_name):
     if builder_name == 'build_fridge_domain_robot':
         return build_fridge_domain_robot
