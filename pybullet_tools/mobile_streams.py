@@ -471,11 +471,18 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
         ik_solver = IKSolver(robot.body, tool_link=tool_link, first_joint=None,
                              custom_limits=robot.custom_limits)  ## using all 13 joints
 
+        if verbose:
+            print(f'sample_bconf | IK solver created: {ik_solver}')
+            print(f'sample_bconf | tool_pose (grasp frame): {tool_pose}')
+            print(f'sample_bconf | IK solver joint limits: lower={list(ik_solver.lower_limits)}, upper={list(ik_solver.upper_limits)}')
+
         attempts = 0
-        for conf in ik_solver.generate(tool_pose, max_attempts=ir_max_attempts):  # TODO: islice
+        valid_confs = 0
+        skip_default_precheck = robot.__class__.__name__ == 'FetchRobot'
+        for conf in ik_solver.generate(tool_pose, max_attempts=ir_max_attempts, verbose=verbose):  # TODO: islice
             if ir_max_attempts <= attempts:
                 if verbose:
-                    print(f'sample_bconf failed after {attempts} attempts!')
+                    print(f'sample_bconf failed after {attempts} attempts, {valid_confs} valid configs found!')
                 # wait_unlocked()
                 if soft_failures:
                     attempts = 0
@@ -486,7 +493,11 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
                     break
             attempts += 1
             if conf is None:
+                if verbose:
+                    print(f'sample_bconf | IK attempt {attempts}: TracIK returned None')
                 continue
+            if verbose:
+                print(f'sample_bconf | IK attempt {attempts}: got conf {conf}')
 
             joint_state = dict(zip(ik_solver.joints, conf))
 
@@ -494,22 +505,38 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             bq = Conf(robot.body, base_joints, bconf, joint_state=joint_state)
             bq.assign()
 
-            set_joint_positions(robot.body, arm_joints, default_conf)
-            if collided(robot, obstacles, tag='ik_default_conf', **col_kwargs):
-                # wait_unlocked()
-                continue
+            if skip_default_precheck:
+                if verbose:
+                    print('  → skipping default_conf precheck for Fetch; validating solved IK pose instead')
+            else:
+                set_joint_positions(robot.body, arm_joints, default_conf)
+                collision_result = collided(robot, obstacles, tag='ik_default_conf', **col_kwargs)
+                if collision_result:
+                    if verbose:
+                        print(f'  → rejected: collided in default_conf pose with obstacle')
+                    # wait_unlocked()
+                    continue
+                robot.print_full_body_conf(title=f'sample_bconf({a}), default_conf={default_conf}')
+
             if collision_fn(bconf, verbose=False):
+                if verbose:
+                    print(f'  → rejected: collision_fn(bconf) failed')
                 continue
-            robot.print_full_body_conf(title=f'sample_bconf({a}), default_conf={default_conf}')
 
             ## ----------- identifying collisions, but with this opening joint then picking won't work ------
             ik_solver.set_conf(conf)
-            if collided(robot, obstacles, tag='ik_final_conf', visualize=visualize, **col_kwargs):
-                pass
-                # continue
-            if collision_fn(bconf, verbose=False):
-                pass
-                # continue
+            final_conf_collision = collided(robot, obstacles, tag='ik_final_conf', visualize=visualize, **col_kwargs)
+            if final_conf_collision:
+                if verbose:
+                    print(f'  → collided in ik_final_conf (continuing anyway)')
+                if skip_default_precheck:
+                    continue
+            base_conf_collision = collision_fn(bconf, verbose=False)
+            if base_conf_collision:
+                if verbose:
+                    print(f'  → collision_fn(bconf) in final conf (continuing anyway)')
+                if skip_default_precheck:
+                    continue
             robot.print_full_body_conf(title='sample_bconf.ik_solver.set_conf(conf)')
             ## ----------------------------------------------------------------------------------------------
 
@@ -524,13 +551,17 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
                 if visualize:
                     [remove_body(samp) for samp in samples]
                 yield ir_outputs
+                valid_confs += 1
                 continue
 
             ik_outputs = ik_fn(*(inputs + ir_outputs))
             if ik_outputs is None:
+                if verbose:
+                    print(f'  → ik_fn returned None (likely collision in arm pose)')
                 continue
             if verbose:
-                print('succeed after TracIK solutions:', attempts)
+                print(f'  ✓ succeed after {attempts} attempts')
+            valid_confs += 1
 
             if visualize:
                 [remove_body(samp) for samp in samples]
@@ -639,8 +670,48 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
     ## cached from whole-body IK
     if base_conf.joint_state is not None:
         grasp_conf = list(map(base_conf.joint_state.get, arm_joints))
+        if verbose:
+            print(f'{title}Using cached grasp_conf from TracIK: {grasp_conf}')
     else:
         grasp_conf = robot.inverse_kinematics(arm, gripper_pose, obstacles_here, verbose=verbose)
+        if (grasp_conf is None) and (robot.__class__.__name__ == 'FetchRobot') and robot.use_torso and has_tracik():
+            if verbose:
+                print(f'{title}Arm-only IK failed; trying full-body TracIK with fixed base_conf')
+            from pybullet_tools.tracik import IKSolver
+            tool_link = robot.get_tool_link(arm)
+            tool_pose = robot.get_tool_pose_for_ik(arm, gripper_pose)
+            fixed_limits = copy.deepcopy(custom_limits)
+            for index, (joint, value) in enumerate(zip(base_conf.joints, base_conf.values)):
+                if index < 2:  # x, y
+                    delta = 0.02
+                else:  # theta, torso (or equivalent)
+                    delta = 0.05
+                fixed_limits[joint] = (value - delta, value + delta)
+            ik_solver = IKSolver(robot.body, tool_link=tool_link, first_joint=None,
+                                 custom_limits=fixed_limits, max_time=2e-2)
+            full_conf = None
+            seed_solutions = [
+                ik_solver.solve_current(tool_pose, verbose=verbose),
+                ik_solver.solve_reference(tool_pose, verbose=verbose),
+            ]
+            for candidate in seed_solutions:
+                if candidate is not None:
+                    full_conf = candidate
+                    break
+            if full_conf is None:
+                for candidate in ik_solver.generate(tool_pose, max_attempts=24, verbose=verbose):
+                    if candidate is not None:
+                        full_conf = candidate
+                        break
+            if full_conf is not None:
+                joint_state = dict(zip(ik_solver.joints, full_conf))
+                grasp_conf = [joint_state.get(joint) for joint in arm_joints]
+                if any(value is None for value in grasp_conf):
+                    grasp_conf = None
+                elif verbose:
+                    print(f'{title}Recovered grasp_conf from full-body TracIK: {grasp_conf}')
+        if verbose:
+            print(f'{title}Solving grasp IK: {grasp_conf}')
 
     if grasp_conf is not None:
         set_joint_positions(robot, arm_joints, grasp_conf)
@@ -652,11 +723,20 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
     if collided(robot, obstacles_here, articulated=True, world=world, tag=title, verbose=verbose,
                 ignored_pairs=ignored_pairs_here, min_num_pts=3): ## approach_obstacles): # [obj]
         found_collision = True
+        if verbose:
+            print(f'{title}Collision detected in grasp pose')
     if collision_fn(base_conf.values, verbose=False):
         found_collision = True
+        if verbose:
+            print(f'{title}collision_fn(base_conf) returned True')
     robot.print_full_body_conf(title=f'solve_approach_ik({arm}), grasp_conf={nice(grasp_conf)}')
 
     if grasp_conf is None or found_collision:
+        if verbose:
+            if grasp_conf is None:
+                print(f'{title}Returning None: grasp_conf is None')
+            else:
+                print(f'{title}Returning None: found_collision')
         # wait_unlocked()
         if grasp_conf is None and verbose:
             print(f'{title}Grasp IK computation failure')

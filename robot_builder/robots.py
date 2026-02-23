@@ -1183,7 +1183,6 @@ class PR2Robot(MobileRobot):
     #     from pybullet_tools.ikfast.pr2.ik import pr2_inverse_kinematics
     #     return pr2_inverse_kinematics(self.body, arm, gripper_pose, custom_limits=self.custom_limits)
 
-
 class FetchRobot(PR2Robot):
 
     path = 'models/fetch_description/robots/fetch.urdf'
@@ -1230,6 +1229,10 @@ class FetchRobot(PR2Robot):
 
     def get_carry_conf(self, arm, grasp_type, g):
         return FETCH_CARRY_ARM_CONF
+
+    def get_grasp_pose(self, body_pose, grasp, arm='hand', body=None, verbose=False):
+        body_pose = self.get_body_pose(body_pose, body=body, verbose=verbose)
+        return multiply(body_pose, grasp)
 
 ## -------------------------------------------------------------------------
 
