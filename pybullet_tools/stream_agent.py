@@ -140,10 +140,10 @@ def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
         'compute-pose-kin': from_fn(get_compute_pose_kin()),
         'compute-pose-rel-kin': from_fn(get_compute_pose_rel_kin()),
 
-        'inverse-reachability': from_gen_fn(get_ik_gen_old(p, verbose=True, visualize=False, **ir_kwargs, **tc)),
+        'inverse-reachability': from_gen_fn(get_ik_gen_old(p, verbose=True, visualize=False, **ir, **tc)),
         'inverse-kinematics': from_fn(get_ik_fn_old(p, verbose=True, visualize=False, **ik)),
 
-        'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(p, verbose=False, visualize=False, **ir_kwargs, **tc)),
+        'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(p, verbose=False, visualize=False, **ir, **tc)),
         'inverse-kinematics-rel': from_fn(get_ik_rel_fn_old(p, verbose=False, visualize=False, **ik)),
 
         ## pddl_domains/extensions/_pull_decomposed_stream.pddl
