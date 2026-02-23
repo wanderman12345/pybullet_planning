@@ -1190,6 +1190,10 @@ class FetchRobot(PR2Robot):
     arms = ['hand']
     joint_groups = FETCH_JOINT_GROUPS
     joint_group_names = ['hand', BASE_TORSO_GROUP]
+    camera_frames = [
+        ('head_camera_rgb_optical_frame', 'head_camera_rgb_frame', unit_pose(), 'head'),
+        ('head_camera_depth_optical_frame', 'head_camera_depth_frame', unit_pose(), 'head_depth'),
+    ]
 
     def get_all_arms(self):
         return self.arms

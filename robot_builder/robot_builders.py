@@ -108,8 +108,7 @@ def create_fetch_robot(world, base_q=(0, 0, 0), dual_arm=False, use_torso=True,
                        dual_arm=dual_arm, use_torso=use_torso,
                        custom_limits=get_base_custom_limits(robot, custom_limits),
                        resolutions=resolutions, weights=weights, **kwargs)
-    if hasattr(robot, 'open_arm'):
-        robot.open_arm(FetchRobot.arms[0])
+    robot.open_arm(FetchRobot.arms[0])
     world.add_robot(robot, max_velocities=max_velocities)
     robot.add_cameras(max_depth=2.5, camera_matrix=CAMERA_MATRIX, verbose=True)
     return robot
