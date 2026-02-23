@@ -102,6 +102,10 @@ def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
     pull = copy.deepcopy(pull_kwargs)
     pull.update(dict(collisions=True))
 
+    reachable_radius = 1.3
+    if p.robot.__class__.__name__ == 'FetchRobot':
+        reachable_radius = 5.0
+
     stream_map = {
 
         ## ---------------------------------------------------
@@ -136,10 +140,10 @@ def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
         'compute-pose-kin': from_fn(get_compute_pose_kin()),
         'compute-pose-rel-kin': from_fn(get_compute_pose_rel_kin()),
 
-        'inverse-reachability': from_gen_fn(get_ik_gen_old(p, verbose=True, visualize=False, **ir_kwargs, **tc)),
+        'inverse-reachability': from_gen_fn(get_ik_gen_old(p, verbose=True, visualize=False, **ir, **tc)),
         'inverse-kinematics': from_fn(get_ik_fn_old(p, verbose=True, visualize=False, **ik)),
 
-        'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(p, verbose=False, visualize=False, **ir_kwargs, **tc)),
+        'inverse-reachability-rel': from_gen_fn(get_ik_rel_gen_old(p, verbose=False, visualize=False, **ir, **tc)),
         'inverse-kinematics-rel': from_fn(get_ik_rel_fn_old(p, verbose=False, visualize=False, **ik)),
 
         ## pddl_domains/extensions/_pull_decomposed_stream.pddl
@@ -201,7 +205,7 @@ def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
         'test-cfree-btraj-pose': from_test(get_cfree_btraj_pose_test(p.robot, collisions=c)),
 
         'test-bconf-close-to-surface': from_test(get_bconf_close_to_surface(p)),
-        'test-inverse-reachability': from_test(get_reachable_test()),
+        'test-inverse-reachability': from_test(get_reachable_test(radius=reachable_radius)),
 
         ## ---------------------------------------------------
         ##                    not in use

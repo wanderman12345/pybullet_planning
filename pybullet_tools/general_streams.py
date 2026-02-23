@@ -710,6 +710,12 @@ def get_grasp_gen(problem, collisions=True, num_samples=20, randomize=True, verb
         loaded = world.load_saved_grasps(body) if hasattr(world, 'load_saved_grasps') else None
         if loaded is None:
             grasps_O = get_hand_grasps(world, body, verbose=verbose, test_offset=test_offset, **kwargs)
+            if (len(grasps_O) == 0) and kwargs.get('collisions', False):
+                fallback_kwargs = dict(kwargs)
+                fallback_kwargs['collisions'] = False
+                if verbose:
+                    print(f'\tget_grasp_gen fallback: retrying get_hand_grasps({body}) with collisions=False')
+                grasps_O = get_hand_grasps(world, body, verbose=verbose, test_offset=test_offset, **fallback_kwargs)
         else:
             grasps_O, handles = sample_from_pickled_grasps(loaded, world, body, pose=get_pose(body), debug=debug,
                                                            offset=loaded_offset, k=num_samples)
@@ -725,10 +731,15 @@ def get_grasp_gen(problem, collisions=True, num_samples=20, randomize=True, verb
         if not test_offset and not needs_special_grasp(body, world):
             count_old = len(grasps)
             if top_grasp_tolerance is not None or side_grasp_tolerance is not None:
-                grasps = [grasp for grasp in grasps if is_top_grasp(
+                filtered_grasps = [grasp for grasp in grasps if is_top_grasp(
                     robot, arm, body, grasp, top_grasp_tolerance=top_grasp_tolerance,
                     side_grasp_tolerance=side_grasp_tolerance
                 )]
+                if len(filtered_grasps) > 0:
+                    grasps = filtered_grasps
+                elif verbose and count_old > 0:
+                    print(f'\tget_grasp_gen fallback: tolerance filter removed all grasps for {body}; '
+                          f'using unfiltered grasps')
             count_new = len(grasps)
             if verbose:
                 print(f'\tget_grasp_gen(top_grasp_tolerance={top_grasp_tolerance},'
@@ -941,6 +952,10 @@ def get_pose_from_attachment(problem):
 
 def get_reachable_test(radius=1.3, verbose=False):
     def test(a, o, p, g, q):
+        if (a == 'hand') and (getattr(q, 'joint_state', None) is None):
+            if verbose:
+                print(f'general_streams.get_reachable_test({o}, {p}, {q}) -> False (missing joint_state for Fetch)')
+            return False
         with PoseSaver(o):
             set_pose(o, p.value)
             c_obj = get_aabb_center(get_aabb(o))[:2]

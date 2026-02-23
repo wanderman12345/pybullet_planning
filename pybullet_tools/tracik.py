@@ -129,9 +129,17 @@ class IKSolver(object):
         bx, by, bz = pos_tolerance * np.ones(3)
         brx, bry, brz = ori_tolerance * np.ones(3)
         start_time = time.time()
-        if verbose: print(f'---------- started ik')
+        if verbose:
+            print(f'    solve() tool_pose_world={tool_pose}, pose_base={pose}')
+            print(f'    solve() tform={tform}')
+            print(f'    solve() seed_conf={seed_conf}')
+            print(f'---------- started ik')
         conf = self.ik_solver.ik(tform, qinit=seed_conf, bx=bx, by=by, bz=bz, brx=brx, bry=bry, brz=brz)
-        if verbose: print(f'---------- solved ik in {round(time.time()-start_time, 3)} sec')
+        elapsed = round(time.time()-start_time, 3)
+        if verbose:
+            print(f'---------- solved ik in {elapsed} sec, result={conf is not None}')
+            if conf is not None:
+                print(f'    solution: {conf}')
         self.solutions.append((pose, conf))
         return conf
     def solve_current(self, tool_pose, **kwargs): # solve_closest
@@ -153,8 +161,7 @@ class IKSolver(object):
                 yield solution_conf
             else:
                 if verbose: print(f'tracik.generate {attempt} failed')
-        if verbose: print(f'tracik.generate exit loop to {max_attempts}')
-        yield solution_conf
+        if verbose: print(f'tracik.generate exit loop after {max_attempts} attempts, last_solution={solution_conf is not None}')
     def __str__(self):
         return '{}(body={}, tool={}, base={}, joints={})'.format(
             self.__class__.__name__, self.robot, self.tool_name, self.base_name, list(self.joint_names))

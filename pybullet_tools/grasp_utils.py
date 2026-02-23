@@ -224,7 +224,7 @@ def get_loaded_scale(body):
 
 def get_grasp_db_file(robot, nudge=False, nudge_back=False):
     if isinstance(robot, str):
-        robot_name = {'pr2': 'PR2Robot', 'feg': 'FEGripper'}[robot]
+        robot_name = {'pr2': 'PR2Robot', 'feg': 'FEGripper', 'fetch': 'FetchRobot'}[robot]
     else:
         robot_name = robot.__class__.__name__
     key = 'hand'
@@ -346,6 +346,21 @@ def get_hand_grasps(world, body, link=None, grasp_length=0.1, visualize=False,
         grasp_db_file = get_grasp_db_file(robot, nudge=nudge, nudge_back=nudge_back)
         found, db = find_grasp_in_db(grasp_db_file, instance_name, verbose=verbose, scale=scale,
                                      length_variants=length_variants, use_all_grasps=use_all_grasps, world=world)
+
+        if found is None and robot.__class__.__name__ == 'FetchRobot':
+            for backup_robot_name in ['PR2Robot', 'SpotRobot']:
+                backup_db_file = grasp_db_file.replace('FetchRobot', backup_robot_name)
+                backup_found, _ = find_grasp_in_db(
+                    backup_db_file, instance_name, verbose=False, scale=scale,
+                    length_variants=length_variants, use_all_grasps=use_all_grasps, world=world
+                )
+                if backup_found is not None:
+                    found = backup_found
+                    if verbose:
+                        print(f'get_hand_grasps({instance_name}) | using fallback grasps from {backup_robot_name}')
+                    add_grasp_in_db(db, grasp_db_file, instance_name, found, name=name_in_db,
+                                    length_variants=length_variants, scale=scale)
+                    break
 
         ## TODO: hack to hand adjust the found hand grasps to make nudge grasps
         if found is None and nudge:
