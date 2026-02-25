@@ -1183,7 +1183,6 @@ class PR2Robot(MobileRobot):
     #     from pybullet_tools.ikfast.pr2.ik import pr2_inverse_kinematics
     #     return pr2_inverse_kinematics(self.body, arm, gripper_pose, custom_limits=self.custom_limits)
 
-
 class FetchRobot(PR2Robot):
 
     path = 'models/fetch_description/robots/fetch.urdf'

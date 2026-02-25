@@ -547,6 +547,7 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
                 set_joint_positions(robot.body, arm_joints, default_conf)
                 collision_result = collided(robot, obstacles, tag='ik_default_conf', **col_kwargs)
                 if collision_result:
+<<<<<<< HEAD
                     if verbose:
                         print(f'  → rejected: collided in default_conf pose with obstacle')
                     # wait_unlocked()
@@ -570,8 +571,10 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             else:
                 set_joint_positions(robot.body, arm_joints, default_conf)
                 if collided(robot, obstacles, tag='ik_default_conf', **col_kwargs):
+=======
+>>>>>>> 0e3c230df72b64ae736edbb41f200fe3b358c18d
                     if verbose:
-                        print(f'  → rejected: collided in default_conf pose')
+                        print(f'  → rejected: collided in default_conf pose with obstacle')
                     # wait_unlocked()
                     continue
                 robot.print_full_body_conf(title=f'sample_bconf({a}), default_conf={default_conf}')

@@ -1,5 +1,4 @@
 import os
-import tempfile
 
 from pybullet_tools.bullet_utils import load_robot_urdf
 from pybullet_tools.utils import PI, get_model_path
@@ -66,16 +65,15 @@ def _virtual_base_fetch_urdf_path():
                 raise ValueError('Invalid Fetch URDF: missing robot tag')
         wrapped_urdf = source_urdf[:robot_open + 1] + insertion + source_urdf[robot_open + 1:]
 
-        temp_file = tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix='.urdf',
-                prefix='fetch_virtual_base_',
-                dir=os.path.dirname(source_path),
-                delete=False,
-        )
-        with temp_file:
-                temp_file.write(wrapped_urdf)
-        return temp_file.name, temp_file.name
+        persistent_path = os.path.join(os.path.dirname(source_path), 'fetch_virtual_base.urdf')
+        needs_write = True
+        if os.path.exists(persistent_path):
+                with open(persistent_path, 'r') as existing_file:
+                        needs_write = existing_file.read() != wrapped_urdf
+        if needs_write:
+                with open(persistent_path, 'w') as out_file:
+                        out_file.write(wrapped_urdf)
+        return persistent_path, None
 
 
 def load_fetch():
