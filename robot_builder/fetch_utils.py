@@ -18,7 +18,7 @@ FETCH_JOINT_GROUPS = {
     'head': ['head_pan_joint', 'head_tilt_joint'],
 }
 
-FETCH_CARRY_ARM_CONF = (0, -PI * 0.75, 0, PI * 0.9, 0, PI * 0.75, 0)
+FETCH_CARRY_ARM_CONF = (0, -1.0, 0, 1.5, 0, 1.3, 0)
 
 
 def _virtual_base_fetch_urdf_path():
