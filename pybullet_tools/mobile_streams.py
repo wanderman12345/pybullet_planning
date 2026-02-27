@@ -21,6 +21,11 @@ from pybullet_tools.pose_utils import bconf_to_pose, pose_to_bconf, add_pose, sa
 from pybullet_tools.grasp_utils import add_to_rc2oc
 from pybullet_tools.logging_utils import print_debug, print_blue
 
+FETCH_IK_GENERATE_ATTEMPTS = 300
+FETCH_MOTION_RESOLUTION = 0.04
+FETCH_NUM_RESTARTS = 12
+FETCH_TORSO_NOISE = 0.03
+
 
 def get_ir_sampler(problem, custom_limits={}, max_attempts=40, collisions=True,
                    learned=True, verbose=False, visualize=False):
@@ -80,7 +85,7 @@ def get_ir_sampler(problem, custom_limits={}, max_attempts=40, collisions=True,
             for base_conf in islice(base_generator, max_attempts):
                 if robot.use_torso:
                     x, y, theta = base_conf
-                    z = robot.get_base_positions()[2] + random.uniform(0, 0.2)
+                    z = robot.get_base_positions()[2] + random.uniform(-FETCH_TORSO_NOISE, FETCH_TORSO_NOISE)
 
                     # z_joint = robot.get_base_joints()[2]
                     # z_min, z_max = robot.custom_limits[z_joint]
@@ -224,7 +229,8 @@ def get_ik_pull_gen(problem, max_attempts=80, num_intervals=30, collisions=True,
         inputs = a, o, pst1, g
         results = sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             ir_sampler=ir_sampler, ik_fn=ik_fn, ir_max_attempts=max_attempts, ir_only=ir_only,
-            verbose=verbose, visualize=visualize, soft_failures=soft_failures, learned=learned)
+            verbose=verbose, visualize=visualize, soft_failures=soft_failures, learned=learned,
+            collisions=collisions)
         for (bq1, aq1, at) in results:
             inputs = a, o, pst1, pst2, g, bq1, aq1
             result = compute_pull_door_arm_motion(inputs, world, robot, obstacles, ignored_pairs, saver,
@@ -283,7 +289,8 @@ def get_ik_pull_with_link_gen(problem, max_attempts=80, num_intervals=30, collis
         inputs = a, o, pst1, g
         results = sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             ir_sampler=ir_sampler, ik_fn=ik_fn, ir_max_attempts=max_attempts, ir_only=ir_only,
-            verbose=verbose, visualize=visualize, soft_failures=soft_failures, learned=learned)
+            verbose=verbose, visualize=visualize, soft_failures=soft_failures, learned=learned,
+            collisions=collisions)
         for (bq1, aq1, at) in results:
             inputs = a, o, pst1, pst2, g, bq1, aq1
             result = compute_pull_door_arm_motion(inputs, world, robot, obstacles, ignored_pairs, saver,
@@ -343,7 +350,7 @@ def get_ik_gen_old(problem, max_attempts=80, collisions=True, learned=True, tele
         return sample_bconf(
             world, robot, inputs, pose_value, obstacles, heading, ir_sampler=ir_sampler, ik_fn=ik_fn,
             verbose=verbose, visualize=visualize, soft_failures=soft_failures, learned=learned,
-            ir_max_attempts=max_attempts, ir_only=ir_only)
+            ir_max_attempts=max_attempts, ir_only=ir_only, collisions=collisions)
 
     return gen
 
@@ -369,8 +376,8 @@ def get_ik_rel_gen_old(problem, max_attempts=30, collisions=True, learned=True, 
 
         inputs = a, o1, rp1, o2, p2, g
         return sample_bconf(world, robot, inputs, pose_value, obstacles, heading, ir_sampler=ir_sampler, ik_fn=ik_fn,
-                            verbose=verbose, visualize=visualize, soft_failures=soft_failures, learned=learned,
-                            ir_max_attempts=max_attempts, ir_only=ir_only)
+                    verbose=verbose, visualize=visualize, soft_failures=soft_failures, learned=learned,
+                    ir_max_attempts=max_attempts, ir_only=ir_only, collisions=collisions)
 
     return gen
 
@@ -410,7 +417,8 @@ def process_ik_context(context, verbose=False):
 
 def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
                  ir_sampler=None, ik_fn=None, ir_only=False, learned=False,
-                 ir_max_attempts=40, soft_failures=False, verbose=False, visualize=False):
+                 ir_max_attempts=40, soft_failures=False, verbose=False, visualize=False,
+                 collisions=True):
     a, o = inputs[:2]
     g = inputs[-1]
     robot.open_arm(a)
@@ -438,7 +446,7 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
 
     ## ----------- identifying collisions, but with this opening joint then picking won't work ------
     gripper_grasp = robot.set_gripper_pose(pose_value, g.value, arm=a, body=g.body)
-    if collided(gripper_grasp, obstacles, articulated=False, world=world, tag='ir.gripper'):
+    if collisions and collided(gripper_grasp, obstacles, articulated=False, world=world, tag='ir.gripper'):
         pass
         # if verbose:
         #     print(f'{heading} -------------- grasp {nice(g.value)} is in collision, continue anyway')
@@ -476,7 +484,9 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
         grasp_pose = robot.get_grasp_pose(pose_value, g.value, a, body=g.body)
         tool_pose = robot.get_tool_pose_for_ik(a, grasp_pose)
 
-        collision_fn = robot.get_collision_fn(obstacles=obstacles)
+        collision_fn = None
+        if collisions:
+            collision_fn = robot.get_collision_fn(joint_group='base', obstacles=obstacles)
 
         tool_link = robot.get_tool_link(a)
         ik_solver = IKSolver(robot.body, tool_link=tool_link, first_joint=None,
@@ -525,7 +535,14 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             
             # Check if bconf values are within IK solver's limits (which include custom_limits)
             bounds_violated = False
-            for i, (joint_idx, value) in enumerate(zip(ik_solver.joints[:len(base_joints)], bconf)):
+            solver_index_by_joint = {joint_idx: i for i, joint_idx in enumerate(ik_solver.joints)}
+            for joint_idx, value in zip(base_joints, bconf):
+                if joint_idx not in solver_index_by_joint:
+                    if verbose:
+                        print(f'DEBUG: base joint {joint_idx} missing from IK solver joints - SKIPPING')
+                    bounds_violated = True
+                    break
+                i = solver_index_by_joint[joint_idx]
                 lower = ik_solver.lower_limits[i]
                 upper = ik_solver.upper_limits[i]
                 if not (lower <= value <= upper):
@@ -553,24 +570,25 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
                     continue
                 robot.print_full_body_conf(title=f'sample_bconf({a}), default_conf={default_conf}')
 
-            if collision_fn(bconf, verbose=False):
+            if collisions and collision_fn is not None and collision_fn(bconf, verbose=False):
                 if verbose:
                     print(f'  → rejected: collision_fn(bconf) failed')
-                continue
+                if not skip_default_precheck:
+                    continue
 
             ## ----------- identifying collisions, but with this opening joint then picking won't work ------
             ik_solver.set_conf(conf)
-            final_conf_collision = collided(robot, obstacles, tag='ik_final_conf', visualize=visualize, **col_kwargs)
+            final_conf_collision = collisions and collided(robot, obstacles, tag='ik_final_conf', visualize=visualize, **col_kwargs)
             if final_conf_collision:
                 if verbose:
-                    print(f'  → collided in ik_final_conf (continuing anyway)')
-                if skip_default_precheck:
+                    print(f'  → collided in ik_final_conf')
+                if not skip_default_precheck:
                     continue
-            base_conf_collision = collision_fn(bconf, verbose=False)
+            base_conf_collision = collisions and collision_fn is not None and collision_fn(bconf, verbose=False)
             if base_conf_collision:
                 if verbose:
-                    print(f'  → collision_fn(bconf) in final conf (continuing anyway)')
-                if skip_default_precheck:
+                    print(f'  → collision_fn(bconf) in final conf')
+                if not skip_default_precheck:
                     continue
             robot.print_full_body_conf(title='sample_bconf.ik_solver.set_conf(conf)')
             ## ----------------------------------------------------------------------------------------------
@@ -739,7 +757,7 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
                     full_conf = candidate
                     break
             if full_conf is None:
-                for candidate in ik_solver.generate(tool_pose, max_attempts=24, verbose=verbose):
+                for candidate in ik_solver.generate(tool_pose, max_attempts=FETCH_IK_GENERATE_ATTEMPTS, verbose=verbose):
                     if candidate is not None:
                         full_conf = candidate
                         break
@@ -843,7 +861,8 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
     if teleport:
         path = [default_conf, approach_conf, grasp_conf]
     else:
-        resolutions = resolution * np.ones(len(arm_joints))
+        planning_resolution = FETCH_MOTION_RESOLUTION if robot.__class__.__name__ == 'FetchRobot' else resolution
+        resolutions = planning_resolution * np.ones(len(arm_joints))
         if is_top_grasp(robot, arm, body, grasp) or True:
             grasp_path = plan_direct_joint_motion(robot.body, arm_joints, grasp_conf, obstacles=approach_obstacles,
                                                   resolutions=resolutions / 2., **motion_planning_kwargs)
@@ -863,8 +882,9 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
         obstacles_here = [m for m in obstacles_here if m not in initially_attached_to_o + [obj]]
         obstacles_here = [m for m in obstacles_here if (m, obj) not in ignored_pairs_here]
         verbose = f'[{title}.plan_joint_motion]' if debug_mp_obstacles else False
+        restarts = FETCH_NUM_RESTARTS if robot.__class__.__name__ == 'FetchRobot' else 3
         motion_planning_kwargs.update(attachments=attachments_arg, resolutions=resolutions,
-                                      restarts=3, iterations=25, smooth=50, verbose=verbose)
+                          restarts=restarts, iterations=25, smooth=50, verbose=verbose)
         # print_debug(f'{title}\t obstacles_here: {obstacles_here}')
 
         set_joint_positions(robot, arm_joints, default_conf)
