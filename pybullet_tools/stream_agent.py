@@ -97,10 +97,10 @@ def get_stream_map(p, c, l, t, movable_collisions=True, motion_collisions=True,
     ik = dict(collisions=motion_collisions, ACONF=False, teleport=t, resolution=resolution)
 
     ir = copy.deepcopy(ir_kwargs)
-    ir.update(dict(collisions=base_collisions, max_attempts=ir_max_attempts, learned=use_learned_ir))
+    ir.update(dict(collisions=motion_collisions, max_attempts=ir_max_attempts, learned=use_learned_ir))
 
     pull = copy.deepcopy(pull_kwargs)
-    pull.update(dict(collisions=base_collisions))
+    pull.update(dict(collisions=motion_collisions))
 
     reachable_radius = 1.3
     if p.robot.__class__.__name__ == 'FetchRobot':
