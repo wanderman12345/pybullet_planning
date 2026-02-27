@@ -70,7 +70,7 @@ def data_generation_process(config, world_only=False):
     cwd_saver = create_cwd_saver()  ## so all the log will be printed to tmp/
     print_fn = parallel_print  ## if args.parallel else myprint
     print_fn(config)
-
+    
     state = State(world)
     pddlstream_problem = pddlstream_from_state_goal(
         state, goal, domain_pddl=domain_path, stream_pddl=stream_path,

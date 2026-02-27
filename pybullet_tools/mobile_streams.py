@@ -155,7 +155,7 @@ def get_ik_fn_old(problem, custom_limits={}, collisions=True, teleport=False,
             arm, obj, pose_value, grasp, base_conf,
             world, robot, custom_limits, obstacles_here, ignored_pairs_here, resolution=resolution,
             attachments=attachments, title=title, ACONF=ACONF, teleport=teleport,
-            verbose=verbose, visualize=visualize, collisions=collisions
+            verbose=verbose, visualize=visualize
         )
     return fn
 
@@ -191,7 +191,7 @@ def get_ik_rel_fn_old(problem, custom_limits={}, collisions=True, teleport=False
             arm, obj, pose_value, grasp, base_conf,
             world, robot, custom_limits, obstacles_here, ignored_pairs_here, resolution=resolution,
             attachments=attachments, title=title, ACONF=ACONF, teleport=teleport,
-            verbose=verbose, visualize=visualize, collisions=collisions
+            verbose=verbose, visualize=visualize
         )
     return fn
 
@@ -705,15 +705,7 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
 
     arm_joints = robot.get_arm_joints(arm)
 
-    default_conf_raw = robot.get_carry_conf(arm, grasp.grasp_type, grasp.value)
-    default_conf = []
-    for joint, value in zip(arm_joints, default_conf_raw):
-        lower = get_min_limit(robot.body, joint)
-        upper = get_max_limit(robot.body, joint)
-        clipped_value = min(max(value, lower), upper)
-        if verbose and clipped_value != value:
-            print(f'{title}Clipping default_conf joint {joint} from {value} to {clipped_value} within [{lower}, {upper}]')
-        default_conf.append(clipped_value)
+    default_conf = robot.get_carry_conf(arm, grasp.grasp_type, grasp.value)
     base_conf.assign()
     set_joint_positions(robot, arm_joints, default_conf)  # default_conf | sample_fn()
 
