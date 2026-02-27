@@ -257,7 +257,6 @@ def get_ik_pull_gen(problem, max_attempts=80, num_intervals=30, collisions=True,
 
     return gen
 
-
 def get_ik_pull_with_link_gen(problem, max_attempts=80, num_intervals=30, collisions=True, learned=True, teleport=False,
                               ir_only=False, soft_failures=False, verbose=False, visualize=False, ACONF=False, **kwargs):
     """ the one func that combines all """
@@ -566,7 +565,6 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
                 if collision_result:
                     if verbose:
                         print(f'  → rejected: collided in default_conf pose with obstacle')
-                    # wait_unlocked()
                     continue
                 robot.print_full_body_conf(title=f'sample_bconf({a}), default_conf={default_conf}')
 
@@ -818,6 +816,43 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
             tool_pose = robot.get_tool_pose_for_ik(arm, approach_pose)
             tool_link = robot.get_tool_link(arm)
             approach_conf = robot.run_ik_once(arm, tool_pose, tool_link, arm_joints[0])
+
+    if (approach_conf is None) and (robot.__class__.__name__ == 'FetchRobot') and robot.use_torso and has_tracik():
+        if verbose:
+            print(f'{title}Approach arm IK failed; trying full-body TracIK with fixed base_conf')
+        from pybullet_tools.tracik import IKSolver
+        tool_link = robot.get_tool_link(arm)
+        tool_pose = robot.get_tool_pose_for_ik(arm, approach_pose)
+        fixed_limits = copy.deepcopy(custom_limits)
+        for index, (joint, value) in enumerate(zip(base_conf.joints, base_conf.values)):
+            if index < 2:
+                delta = 0.02
+            else:
+                delta = 0.05
+            fixed_limits[joint] = (value - delta, value + delta)
+        ik_solver = IKSolver(robot.body, tool_link=tool_link, first_joint=None,
+                             custom_limits=fixed_limits, max_time=2e-2)
+        full_conf = None
+        seed_solutions = [
+            ik_solver.solve_current(tool_pose, verbose=verbose),
+            ik_solver.solve_reference(tool_pose, verbose=verbose),
+        ]
+        for candidate in seed_solutions:
+            if candidate is not None:
+                full_conf = candidate
+                break
+        if full_conf is None:
+            for candidate in ik_solver.generate(tool_pose, max_attempts=FETCH_IK_GENERATE_ATTEMPTS, verbose=verbose):
+                if candidate is not None:
+                    full_conf = candidate
+                    break
+        if full_conf is not None:
+            joint_state = dict(zip(ik_solver.joints, full_conf))
+            approach_conf = [joint_state.get(joint) for joint in arm_joints]
+            if any(value is None for value in approach_conf):
+                approach_conf = None
+            elif verbose:
+                print(f'{title}Recovered approach_conf from full-body TracIK: {approach_conf}')
         # if not has_tracik() and approach_conf is not None:
         #     print('\n\n FastIK succeeded after TracIK failed\n\n')
         # approach_conf = sub_inverse_kinematics(robot, arm_joints[0], arm_link, approach_pose, custom_limits=custom_limits)
@@ -917,7 +952,6 @@ def solve_approach_ik(arm, obj, pose_value, grasp, base_conf,
             if approach_path is None:
                 if verbose:
                     print(f'{title}\tApproach path failure')
-
                 if visualize:
                     remove_body(gripper_grasp)
                 return None
