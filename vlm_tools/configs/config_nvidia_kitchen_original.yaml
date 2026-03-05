@@ -1,6 +1,6 @@
 ## ---------- debug related
-seed: 1
-verbose: true
+seed: null
+verbose: false
 debug: false
 
 ## ---------- language planning agent
@@ -36,10 +36,7 @@ data:
 
 ## ---------- robot related
 robot:
-  robot_name: 'fetch'
-  custom_limits: [[0, -4, 0], [3, 8, 0.4]]
-  base_q: [2, 2, 0, 2.5]
-  use_torso: true
+  robot_name: 'pr2'
   draw_base_limits: true
   dual_arm: false
   self_collisions: false
@@ -71,9 +68,9 @@ streams:
   disable_movable_collision: false
   disable_base_collision: false
   top_grasp_tolerance: null # 0.8
-  use_all_grasps: true
+  use_all_grasps: false
   num_grasps: 15
-  ir_max_attempts: 120
+  ir_max_attempts: 10
 
 ## pybullet related
 sim:
@@ -82,10 +79,10 @@ sim:
   viewer: true
   lock: true
   simulate: false
-  drive: true
-  camera: true
+  drive: false
+  camera: false
   segment: false
   monitoring: false
   show_object_names: true
-  time_step: 0.02
+  time_step: 0.01
   resolution_angular: 3

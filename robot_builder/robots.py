@@ -378,7 +378,14 @@ class RobotAPI(Robot):
         return self.get_all_arm_conf(roundto) + [self.get_all_base_conf(roundto)]
 
     def get_one_arm_conf(self, arm, roundto=3):
-        return self.get_positions(joint_group=f'{arm}_arm', roundto=roundto)
+        preferred_group = f'{arm}_arm'
+        if preferred_group in self.joint_groups:
+            return self.get_positions(joint_group=preferred_group, roundto=roundto)
+        if arm in self.joint_groups:
+            return self.get_positions(joint_group=arm, roundto=roundto)
+        if 'arm' in self.joint_groups:
+            return self.get_positions(joint_group='arm', roundto=roundto)
+        return self.get_positions(joint_group=preferred_group, roundto=roundto)
 
     def get_all_base_conf(self, roundto=3):
         x, y, z, theta = self.get_positions(joint_group='base-torso', roundto=None)
@@ -399,7 +406,18 @@ class RobotAPI(Robot):
 
     def get_collision_fn(self, joint_group='base-torso', obstacles=[], attachments=[], verbose=False):
         if joint_group not in self.joint_groups:
-            joint_group = 'base-torso'  ## self.get_base_joints()
+            candidates = []
+            if isinstance(joint_group, str):
+                if joint_group.endswith('_arm'):
+                    arm = joint_group[:-4]
+                    candidates.extend([arm, 'arm'])
+                elif joint_group in ['left', 'right', 'hand']:
+                    candidates.extend([f'{joint_group}_arm', joint_group, 'arm'])
+            candidates.extend(['base-torso', self.base_group])
+            for candidate in candidates:
+                if candidate in self.joint_groups:
+                    joint_group = candidate
+                    break
         joints = self.get_group_joints(joint_group)
         return get_collision_fn(self, joints, obstacles=obstacles, attachments=attachments,
                                 self_collisions=self.self_collisions, custom_limits=self.custom_limits,

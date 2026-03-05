@@ -580,14 +580,12 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             if final_conf_collision:
                 if verbose:
                     print(f'  → collided in ik_final_conf')
-                if not skip_default_precheck:
-                    continue
+                continue
             base_conf_collision = collisions and collision_fn is not None and collision_fn(bconf, verbose=False)
             if base_conf_collision:
                 if verbose:
                     print(f'  → collision_fn(bconf) in final conf')
-                if not skip_default_precheck:
-                    continue
+                continue
             robot.print_full_body_conf(title='sample_bconf.ik_solver.set_conf(conf)')
             ## ----------------------------------------------------------------------------------------------
 
