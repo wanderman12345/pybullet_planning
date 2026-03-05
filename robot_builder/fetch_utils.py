@@ -20,7 +20,6 @@ FETCH_JOINT_GROUPS = {
 
 FETCH_CARRY_ARM_CONF = (0, -1.0, 0, 1.5, 0, 1.3, 0)
 
-
 def _virtual_base_fetch_urdf_path():
         source_path = get_model_path(FETCH_URDF)
         with open(source_path, 'r') as source_file:
