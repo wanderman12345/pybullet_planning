@@ -571,7 +571,8 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             if collisions and collision_fn is not None and collision_fn(bconf, verbose=False):
                 if verbose:
                     print(f'  → rejected: collision_fn(bconf) failed')
-                continue
+                if not skip_default_precheck:
+                    continue
 
             ## ----------- identifying collisions, but with this opening joint then picking won't work ------
             ik_solver.set_conf(conf)
@@ -579,12 +580,14 @@ def sample_bconf(world, robot, inputs, pose_value, obstacles, heading,
             if final_conf_collision:
                 if verbose:
                     print(f'  → collided in ik_final_conf')
-                continue
+                if not skip_default_precheck:
+                    continue
             base_conf_collision = collisions and collision_fn is not None and collision_fn(bconf, verbose=False)
             if base_conf_collision:
                 if verbose:
                     print(f'  → collision_fn(bconf) in final conf')
-                continue
+                if not skip_default_precheck:
+                    continue
             robot.print_full_body_conf(title='sample_bconf.ik_solver.set_conf(conf)')
             ## ----------------------------------------------------------------------------------------------
 
